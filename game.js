@@ -1,168 +1,145 @@
 const ROWS = 6;
 const COLS = 7;
-const PLAYER = 1;
-const AI = 2;
-
-let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+let board = Array(6).fill().map(() => Array(7).fill(0));
 let model;
-let epsilon = 0.3; // Taux d'exploration (30% de coups aléatoires)
+let isTraining = false;
 
-// --- 1. INITIALISATION DU MODÈLE ---
+// Initialisation
 async function init() {
-    model = tf.sequential();
-    model.add(tf.layers.dense({units: 128, activation: 'relu', inputShape: [ROWS * COLS]}));
-    model.add(tf.layers.dense({units: 64, activation: 'relu'}));
-    model.add(tf.layers.dense({units: COLS, activation: 'linear'})); // Un score par colonne
-    model.compile({optimizer: 'adam', loss: 'meanSquaredError'});
-    
-    console.log("Modèle prêt !");
+    try {
+        await loadAI(); // Tente de charger
+    } catch {
+        model = tf.sequential();
+        model.add(tf.layers.dense({units: 128, activation: 'relu', inputShape: [42]}));
+        model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+        model.add(tf.layers.dense({units: 7, activation: 'linear'}));
+        model.compile({optimizer: 'adam', loss: 'meanSquaredError'});
+    }
+    document.getElementById('status').innerText = "Prêt à jouer !";
     renderBoard();
 }
 
-// --- 2. LOGIQUE DU JEU ---
-function checkWin(p) {
-    // Vérification horizontale, verticale et diagonale
+function renderBoard() {
+    const container = document.getElementById('board');
+    container.innerHTML = '';
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            if (checkDir(r, c, 0, 1, p) || checkDir(r, c, 1, 0, p) || 
-                checkDir(r, c, 1, 1, p) || checkDir(r, c, 1, -1, p)) return true;
+            const div = document.createElement('div');
+            div.className = 'cell';
+            if (board[r][c] === 1) div.classList.add('player');
+            if (board[r][c] === 2) div.classList.add('ai');
+            div.onclick = () => playerMove(c);
+            container.appendChild(div);
         }
     }
-    return false;
 }
 
-function checkDir(r, c, dr, dc, p) {
-    let count = 0;
-    for (let i = 0; i < 4; i++) {
-        let nr = r + i * dr, nc = c + i * dc;
-        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === p) count++;
-        else break;
+function resetGame() {
+    board = Array(6).fill().map(() => Array(7).fill(0));
+    renderBoard();
+    document.getElementById('status').innerText = "Grille réinitialisée.";
+}
+
+// IA : On ajoute tf.nextFrame() pour ne pas freezer l'UI
+async function startSelfPlay() {
+    if(isTraining) return;
+    isTraining = true;
+    document.getElementById('status').innerText = "Entraînement en cours (0%)...";
+    
+    for (let i = 0; i < 50; i++) {
+        await selfPlaySingleGame();
+        if (i % 5 === 0) {
+            document.getElementById('status').innerText = `Entraînement : ${i*2}%`;
+            await tf.nextFrame(); // Libère le navigateur pour mettre à jour l'UI
+        }
     }
-    return count === 4;
+    isTraining = false;
+    resetGame();
+    document.getElementById('status').innerText = "Entraînement terminé !";
 }
 
-function dropToken(col, p) {
+async function selfPlaySingleGame() {
+    let tempBoard = Array(6).fill().map(() => Array(7).fill(0));
+    let history = [];
+    let turn = 1;
+    let winner = 0;
+
+    for (let moves = 0; moves < 42; moves++) {
+        let col = Math.random() < 0.2 ? Math.floor(Math.random() * 7) : getBestMove(tempBoard);
+        if (dropToken(tempBoard, col, turn)) {
+            history.push({state: tempBoard.flat(), move: col, player: turn});
+            if (checkWin(tempBoard, turn)) { winner = turn; break; }
+            turn = turn === 1 ? 2 : 1;
+        }
+    }
+    if (winner > 0) await trainFromHistory(history, winner);
+}
+
+function getBestMove(state) {
+    return tf.tidy(() => {
+        const input = tf.tensor2d([state.flat()]);
+        return model.predict(input).argMax(1).dataSync()[0];
+    });
+}
+
+function dropToken(grid, col, p) {
     for (let r = ROWS - 1; r >= 0; r--) {
-        if (board[r][col] === 0) {
-            board[r][col] = p;
+        if (grid[r][col] === 0) {
+            grid[r][col] = p;
             return true;
         }
     }
     return false;
 }
 
-// --- 3. L'IA ET L'ENTRAÎNEMENT ---
-function getBestMove(state) {
-    return tf.tidy(() => {
-        const input = tf.tensor2d([state.flat()]);
-        const prediction = model.predict(input);
-        return prediction.argMax(1).dataSync()[0];
-    });
-}
-
-async function selfPlay(games = 100) {
-    document.getElementById('status').innerText = "Entraînement en cours...";
-    
-    for (let g = 0; g < games; g++) {
-        board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-        let turn = PLAYER;
-        let history = [];
-
-        while (true) {
-            let col = (Math.random() < epsilon) ? Math.floor(Math.random() * COLS) : getBestMove(board);
-            
-            if (dropToken(col, turn)) {
-                history.push({state: [...board.map(r => [...r])], move: col, player: turn});
-                
-                if (checkWin(turn)) {
-                    await trainFromHistory(history, turn); // On récompense le vainqueur
-                    break;
-                }
-                if (board.flat().every(c => c !== 0)) break; // Match nul
-                turn = (turn === PLAYER) ? AI : PLAYER;
-            }
+function checkWin(grid, p) {
+    // Logique simplifiée (Horizontale & Verticale pour l'exemple)
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+            if (grid[r][c]===p && grid[r][c+1]===p && grid[r][c+2]===p && grid[r][c+3]===p) return true;
         }
     }
-    document.getElementById('status').innerText = "Entraînement terminé ! À vous de jouer.";
-    renderBoard();
+    for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (grid[r][c]===p && grid[r+1][c]===p && grid[r+2][c]===p && grid[r+3][c]===p) return true;
+        }
+    }
+    return false;
 }
 
 async function trainFromHistory(history, winner) {
-    const states = [];
-    const targets = [];
-
-    for (let i = 0; i < history.length; i++) {
-        const {state, move, player} = history[i];
-        let reward = (player === winner) ? 1.0 : -1.0;
-        
-        // On récupère la prédiction actuelle
-        const input = tf.tensor2d([state.flat()]);
-        const target = model.predict(input).dataSync();
-        
-        // On ajuste la valeur du coup joué
-        target[move] = reward; 
-        
-        states.push(state.flat());
-        targets.push(target);
-    }
-
+    const states = history.map(h => h.state);
+    const targets = history.map(h => {
+        let t = new Array(7).fill(0);
+        t[h.move] = (h.player === winner) ? 1 : -1;
+        return t;
+    });
     await model.fit(tf.tensor2d(states), tf.tensor2d(targets), {epochs: 1});
 }
 
-// --- 4. INTERFACE ---
-function renderBoard() {
-    const container = document.getElementById('board');
-    container.innerHTML = '';
-    board.forEach((row, r) => {
-        row.forEach((cell, c) => {
-            const div = document.createElement('div');
-            div.className = 'cell' + (cell === PLAYER ? ' player' : cell === AI ? ' ai' : '');
-            div.onclick = () => playerMove(c);
-            container.appendChild(div);
-        });
-    });
-}
-// Sauvegarder le cerveau de l'IA
 async function saveAI() {
-    await model.save('localstorage://connect4-model');
-    document.getElementById('status').innerText = "Cerveau de l'IA sauvegardé !";
+    await model.save('localstorage://c4-model');
+    alert("Mémoire sauvegardée !");
 }
 
-// Charger le cerveau au démarrage
 async function loadAI() {
-    try {
-        model = await tf.loadLayersModel('localstorage://connect4-model');
-        // Il faut recompiler après le chargement
-        model.compile({optimizer: 'adam', loss: 'meanSquaredError'});
-        document.getElementById('status').innerText = "Cerveau chargé avec succès.";
-        renderBoard();
-    } catch (e) {
-        console.log("Aucune sauvegarde trouvée, création d'un nouveau cerveau.");
-        init(); // Crée un nouveau modèle si aucun n'existe
-    }
-}
-
-function resetGame() {
-    board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-    renderBoard();
-    document.getElementById('status').innerText = "Nouvelle partie ! À vous de jouer.";
+    model = await tf.loadLayersModel('localstorage://c4-model');
+    model.compile({optimizer: 'adam', loss: 'meanSquaredError'});
 }
 
 async function playerMove(col) {
-    if (dropToken(col, PLAYER)) {
+    if (isTraining) return;
+    if (dropToken(board, col, 1)) {
         renderBoard();
-        if (checkWin(PLAYER)) return alert("Bravo !");
+        if (checkWin(board, 1)) { alert("Gagné !"); return; }
         
-        // Tour de l'IA
-        setTimeout(async () => {
+        setTimeout(() => {
             let aiCol = getBestMove(board);
-            if (dropToken(aiCol, AI)) {
-                renderBoard();
-                if (checkWin(AI)) alert("L'IA a gagné !");
-            }
-        }, 500);
+            dropToken(board, aiCol, 2);
+            renderBoard();
+            if (checkWin(board, 2)) alert("L'IA a gagné !");
+        }, 300);
     }
 }
 
 init();
-
