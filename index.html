@@ -17,6 +17,15 @@
     <div id="board" class="grid"></div>
     <p id="status">L'IA apprend à chaque coup...</p>
 
+<div class="controls">
+    <button onclick="resetGame()">Nouvelle Partie</button>
+    <button onclick="selfPlay(50)">Entraînement Auto (50)</button>
+    <hr>
+    <button onclick="saveAI()">Sauvegarder l'IA</button>
+    <button onclick="loadAI()">Charger l'IA sauvegardée</button>
+</div>
+
+
     <script src="game.js"></script>
 </body>
 </html>
