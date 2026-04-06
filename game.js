@@ -4,15 +4,14 @@ let board = [];
 let model;
 let isTraining = false;
 
-// 1. ARCHITECTURE "VISION SPATIALE" (CNN)
+// 1. INITIALISATION DU CERVEAU (Architecture Convolutionnelle Pro)
 async function initIA() {
     try {
-        // Tentative de chargement du modèle PRO
-        model = await tf.loadLayersModel('localstorage://c4-ultra-pro');
-        document.getElementById('status').innerText = "IA ULTRA-PRO Chargée";
+        model = await tf.loadLayersModel('localstorage://c4-ultra-hardcore');
+        document.getElementById('status').innerText = "IA Hardcore Chargée";
     } catch (e) {
-        // Création d'un cerveau capable de détecter les lignes (Filtres 4x4)
         model = tf.sequential();
+        // Le Reshape permet à l'IA de voir la grille comme une image 6x7
         model.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
         model.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
         model.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}));
@@ -21,32 +20,16 @@ async function initIA() {
         model.add(tf.layers.dense({units: 7, activation: 'linear'}));
         
         model.compile({optimizer: tf.train.adam(0.0005), loss: 'meanSquaredError'});
-        document.getElementById('status').innerText = "Nouveau Cerveau CNN Initialisé.";
+        document.getElementById('status').innerText = "Nouveau Cerveau CNN (Anticipation) créé.";
     }
     renderBoard();
 }
 
-// 2. RENDU ULTRA-FLUIDE
-function renderBoard() {
-    const gridEl = document.getElementById('board');
-    if (!gridEl) return;
-    gridEl.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const div = document.createElement('div');
-            div.className = 'cell';
-            if (board[r][c] === 1) div.classList.add('player');
-            if (board[r][c] === 2) div.classList.add('ai');
-            div.onclick = () => handleMove(c);
-            fragment.appendChild(div);
-        }
-    }
-    gridEl.appendChild(fragment);
+// 2. LOGIQUE DE JEU & VÉRIFICATION
+function initBoard() {
+    board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
 }
 
-// 3. LOGIQUE DE JEU OPTIMISÉE
 function dropToken(grid, col, player) {
     if (col < 0 || col >= COLS || grid[0][col] !== 0) return false;
     for (let r = ROWS - 1; r >= 0; r--) {
@@ -73,8 +56,23 @@ function checkWinner(g, p) {
     return false;
 }
 
-// 4. PRÉDICTION (Intelligence)
+// 3. PRÉDICTION AVEC ANTICIPATION (Bloque l'adversaire avant de réfléchir)
 function getBestMove(grid) {
+    // ÉTAPE 1 : Est-ce que je peux gagner ce tour-ci ?
+    for (let c = 0; c < COLS; c++) {
+        let tempBoard = grid.map(row => [...row]);
+        if (dropToken(tempBoard, c, 2)) {
+            if (checkWinner(tempBoard, 2)) return c;
+        }
+    }
+    // ÉTAPE 2 : Est-ce que l'humain peut gagner au prochain tour ? SI OUI, JE BLOQUE !
+    for (let c = 0; c < COLS; c++) {
+        let tempBoard = grid.map(row => [...row]);
+        if (dropToken(tempBoard, c, 1)) {
+            if (checkWinner(tempBoard, 1)) return c;
+        }
+    }
+    // ÉTAPE 3 : Sinon, utiliser le réseau de neurones pour la stratégie
     return tf.tidy(() => {
         const input = tf.tensor2d([grid.flat()]);
         const pred = model.predict(input);
@@ -82,7 +80,26 @@ function getBestMove(grid) {
     });
 }
 
-// 5. ENTRAÎNEMENT RAFALE (100 MATCHS VISIBLES)
+// 4. RENDU VISUEL
+function renderBoard() {
+    const gridEl = document.getElementById('board');
+    if (!gridEl) return;
+    gridEl.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const div = document.createElement('div');
+            div.className = 'cell';
+            if (board[r][c] === 1) div.classList.add('player');
+            if (board[r][c] === 2) div.classList.add('ai');
+            div.onclick = () => handleMove(c);
+            fragment.appendChild(div);
+        }
+    }
+    gridEl.appendChild(fragment);
+}
+
+// 5. ENTRAÎNEMENT RAFALE (100 MATCHS)
 async function runTraining() {
     if (isTraining) return;
     isTraining = true;
@@ -92,20 +109,17 @@ async function runTraining() {
     for (let i = 1; i <= batchSize; i++) {
         initBoard();
         let moves = [];
-        let turn = (i % 2 === 0) ? 1 : 2;
+        let turn = (Math.random() < 0.5) ? 1 : 2;
         let winner = 0;
 
-        document.getElementById('status').innerText = `Rafale : Match ${i}/${batchSize}`;
+        document.getElementById('status').innerText = `Simulation Rafale : Match ${i}/${batchSize}`;
 
         for (let step = 0; step < 42; step++) {
-            // IA joue avec 15% d'exploration (hasard)
-            let col = Math.random() < 0.15 ? Math.floor(Math.random() * 7) : getBestMove(board);
+            let col = Math.random() < 0.2 ? Math.floor(Math.random() * 7) : getBestMove(board);
             if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
 
             if (dropToken(board, col, turn)) {
                 moves.push({state: board.flat(), move: col, player: turn});
-                
-                // Mise à jour visuelle synchronisée sur l'écran (Ultra-Fast)
                 renderBoard();
                 await new Promise(requestAnimationFrame); 
                 
@@ -114,40 +128,39 @@ async function runTraining() {
             }
         }
 
-        // Attribution des récompenses (Q-Learning)
+        // Apprentissage par renforcement (Punition Sévère)
         moves.forEach(m => {
             let label = new Array(7).fill(0);
-            if (winner === 2) label[m.move] = (m.player === 2) ? 1.0 : -1.0;
-            if (winner === 1) label[m.move] = (m.player === 2) ? -1.0 : 0.2;
+            if (winner === 2 && m.player === 2) label[m.move] = 1.0; 
+            if (winner === 1 && m.player === 2) label[m.move] = -2.0; // Grosse punition en cas de défaite
             allStates.push(m.state);
             allLabels.push(label);
         });
 
-        // Apprentissage par petits blocs pour éviter les fuites mémoire
         if (i % 10 === 0) {
             const xs = tf.tensor2d(allStates);
             const ys = tf.tensor2d(allLabels);
-            await model.fit(xs, ys, {epochs: 1, shuffle: true});
+            await model.fit(xs, ys, {epochs: 2, shuffle: true});
             xs.dispose(); ys.dispose();
             allStates = []; allLabels = [];
         }
     }
 
     isTraining = false;
-    document.getElementById('status').innerText = "Entraînement terminé !";
+    document.getElementById('status').innerText = "Batch terminé. Mémoire mise à jour !";
     initBoard();
     renderBoard();
 }
 
-// 6. ACTION JOUEUR HUMAIN
+// 6. TOUR DU JOUEUR HUMAIN
 async function handleMove(col) {
     if (isTraining || board[0][col] !== 0) return;
 
     if (dropToken(board, col, 1)) {
         renderBoard();
-        if (checkWinner(board, 1)) { document.getElementById('status').innerText = "Gagné !"; return; }
+        if (checkWinner(board, 1)) { document.getElementById('status').innerText = "Vous avez gagné !"; return; }
 
-        document.getElementById('status').innerText = "L'IA analyse...";
+        document.getElementById('status').innerText = "L'IA anticipe...";
         setTimeout(() => {
             let aiCol = getBestMove(board);
             if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
@@ -157,19 +170,17 @@ async function handleMove(col) {
                 if (checkWinner(board, 2)) document.getElementById('status').innerText = "L'IA a gagné !";
                 else document.getElementById('status').innerText = "À vous de jouer.";
             }
-        }, 300);
+        }, 200);
     }
 }
 
-// BOUTONS
+// ÉVÉNEMENTS
 document.getElementById('btn-reset').onclick = () => { initBoard(); renderBoard(); document.getElementById('status').innerText = "Prêt."; };
 document.getElementById('btn-train').onclick = runTraining;
 document.getElementById('btn-save').onclick = async () => { 
-    await model.save('localstorage://c4-ultra-pro'); 
-    alert("Mémoire ULTRA-PRO sauvegardée !"); 
+    await model.save('localstorage://c4-ultra-hardcore'); 
+    alert("Cerveau Hardcore Sauvegardé !"); 
 };
 
-// LANCEMENT
-function initBoard() { board = Array(ROWS).fill().map(() => Array(COLS).fill(0)); }
 initBoard();
 initIA();
