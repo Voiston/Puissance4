@@ -4,6 +4,8 @@ let board = [];
 let model;
 let isTraining = false;
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // 1. Initialisation de la grille
 function initBoard() {
     board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
@@ -28,6 +30,7 @@ async function initIA() {
 // 3. Affichage de la grille
 function renderBoard() {
     const gridEl = document.getElementById('board');
+    if (!gridEl) return;
     gridEl.innerHTML = '';
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
@@ -43,19 +46,20 @@ function renderBoard() {
 
 // 4. Logique pour faire tomber un pion
 function dropToken(grid, col, player) {
+    if (col < 0 || col >= COLS) return false;
     for (let r = ROWS - 1; r >= 0; r--) {
         if (grid[r][col] === 0) {
             grid[r][col] = player;
             return true;
         }
     }
-    return false; // Colonne pleine
+    return false; 
 }
 
 // 5. Action du joueur
 async function handleMove(col) {
-    if (isTraining) return;
-    
+    if (isTraining || board[0][col] !== 0) return;
+
     if (dropToken(board, col, 1)) {
         renderBoard();
         if (checkWinner(board, 1)) {
@@ -65,7 +69,13 @@ async function handleMove(col) {
 
         document.getElementById('status').innerText = "L'IA réfléchit...";
         setTimeout(() => {
-            const aiCol = getBestMove(board);
+            let aiCol = getBestMove(board);
+            // Sécurité : si l'IA choisit une colonne pleine, elle joue au hasard
+            if (board[0][aiCol] !== 0) {
+                const possibles = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0);
+                aiCol = possibles[Math.floor(Math.random() * possibles.length)];
+            }
+            
             if (dropToken(board, aiCol, 2)) {
                 renderBoard();
                 if (checkWinner(board, 2)) {
@@ -89,87 +99,61 @@ function getBestMove(grid) {
 
 // 7. Vérification de victoire
 function checkWinner(grid, p) {
-    // Horizontal
     for (let r = 0; r < ROWS; r++) 
         for (let c = 0; c < COLS - 3; c++) 
             if (grid[r][c]===p && grid[r][c+1]===p && grid[r][c+2]===p && grid[r][c+3]===p) return true;
-    // Vertical
     for (let r = 0; r < ROWS - 3; r++) 
         for (let c = 0; c < COLS; c++) 
             if (grid[r][c]===p && grid[r+1][c]===p && grid[r+2][c]===p && grid[r+3][c]===p) return true;
     return false;
 }
 
-// 8. Entraînement automatique (Self-Play)
-// Fonction utilitaire pour ralentir l'affichage
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
+// 8. Entraînement automatique VISUEL
 async function runTraining() {
     if (isTraining) return;
     isTraining = true;
-    const iterations = 10; // On réduit un peu car c'est plus lent à regarder
-    
+    const iterations = 10; 
+
     for (let i = 1; i <= iterations; i++) {
-        initBoard(); // On vide le plateau pour la nouvelle partie d'entraînement
+        initBoard(); 
         renderBoard();
-        
         let moves = [];
         let turn = 1;
-        let gameOver = false;
 
         document.getElementById('status').innerText = `Match Auto : ${i}/${iterations}`;
 
         for (let step = 0; step < 42; step++) {
-            // L'IA choisit un coup
             let col = Math.random() < 0.2 ? Math.floor(Math.random() * 7) : getBestMove(board);
             
+            // On s'assure que la colonne n'est pas pleine
+            if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
+
             if (dropToken(board, col, turn)) {
                 moves.push({state: board.flat(), move: col, player: turn});
-                renderBoard(); // ON AFFICHE LE PION
+                renderBoard();
                 
-                if (checkWinner(board, turn)) {
-                    gameOver = true;
-                    document.getElementById('status').innerText = `Victoire Joueur ${turn} !`;
-                    break;
-                }
-                
+                if (checkWinner(board, turn)) break;
                 turn = turn === 1 ? 2 : 1;
-                await sleep(100); // PAUSE de 100ms pour voir le pion tomber
+                await sleep(50); // Vitesse rapide mais visible
             }
         }
 
-        // L'IA apprend de cette partie qu'on vient de voir
+        // Apprentissage
         const states = tf.tensor2d(moves.map(m => m.state));
         const labels = tf.tensor2d(moves.map(m => {
             let l = Array(7).fill(0);
-            l[m.move] = 1;
+            l[m.move] = 1; 
             return l;
         }));
-        
+
         await model.fit(states, labels, {epochs: 1});
-        await sleep(500); // Petite pause entre les matchs
+        await sleep(300);
     }
 
     isTraining = false;
-    document.getElementById('status').innerText = "Entraînement visuel fini !";
-    initBoard();
-    renderBoard();
-}
-
-        // Apprentissage simple : on renforce les coups du dernier joueur (gagnant potentiel)
-        const states = tf.tensor2d(moves.map(m => m.state));
-        const labels = tf.tensor2d(moves.map(m => {
-            let l = Array(7).fill(0);
-            l[m.move] = 1;
-            return l;
-        }));
-        await model.fit(states, labels, {epochs: 1});
-        await tf.nextFrame();
-    }
-    isTraining = false;
-    initBoard();
-    renderBoard();
     document.getElementById('status').innerText = "Entraînement fini !";
+    initBoard();
+    renderBoard();
 }
 
 // Événements des boutons
