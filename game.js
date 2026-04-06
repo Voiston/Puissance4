@@ -122,6 +122,25 @@ function renderBoard() {
         });
     });
 }
+// Sauvegarder le cerveau de l'IA
+async function saveAI() {
+    await model.save('localstorage://connect4-model');
+    document.getElementById('status').innerText = "Cerveau de l'IA sauvegardé !";
+}
+
+// Charger le cerveau au démarrage
+async function loadAI() {
+    try {
+        model = await tf.loadLayersModel('localstorage://connect4-model');
+        // Il faut recompiler après le chargement
+        model.compile({optimizer: 'adam', loss: 'meanSquaredError'});
+        document.getElementById('status').innerText = "Cerveau chargé avec succès.";
+        renderBoard();
+    } catch (e) {
+        console.log("Aucune sauvegarde trouvée, création d'un nouveau cerveau.");
+        init(); // Crée un nouveau modèle si aucun n'existe
+    }
+}
 
 async function playerMove(col) {
     if (dropToken(col, PLAYER)) {
