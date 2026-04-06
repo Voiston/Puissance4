@@ -1,58 +1,50 @@
 const ROWS = 6, COLS = 7;
 let board = [];
-let model, targetModel; // Deux réseaux pour la stabilité
+let model, targetModel;
 let isTraining = false;
 
-// Paramètres DQN
-const GAMMA = 0.95; // Importance du futur
-const MEMORY_SIZE = 5000;
-let memory = []; // Le Replay Buffer
-let totalGames = parseInt(localStorage.getItem('dqn_totalGames')) || 0;
-let aiWins = parseInt(localStorage.getItem('dqn_aiWins')) || 0;
+// PARAMÈTRES DQN OPTIMISÉS POUR L'APPRENTISSAGE PUR
+const GAMMA = 0.97; // Plus de vision à long terme
+const MEMORY_SIZE = 10000; // Mémoire doublée
+let memory = []; 
 
-// 1. ARCHITECTURE CNN POUR DQN
+let totalGames = parseInt(localStorage.getItem('dqn_pure_totalGames')) || 0;
+let aiWins = parseInt(localStorage.getItem('dqn_pure_aiWins')) || 0;
+
+// 1. RÉSEAU DE NEURONES PLUS PROFOND
 async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
+        
+        // On passe à 128 filtres pour mieux "voir" sans aide logique
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        
         m.add(tf.layers.flatten());
-        m.add(tf.layers.dense({units: 128, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 7, activation: 'linear'})); // Sortie = Q-Values
-        m.compile({optimizer: tf.train.adam(0.00025), loss: 'meanSquaredError'});
+        m.add(tf.layers.dense({units: 256, activation: 'relu'})); // Couche dense plus large
+        m.add(tf.layers.dense({units: 7, activation: 'linear'})); 
+        
+        m.compile({optimizer: tf.train.adam(0.0001), loss: 'meanSquaredError'});
         return m;
     };
 
     try {
-        model = await tf.loadLayersModel('localstorage://dqn-v1');
-        targetModel = await tf.loadLayersModel('localstorage://dqn-v1');
-        document.getElementById('ia-status').innerText = "DQN Chargé";
+        model = await tf.loadLayersModel('localstorage://dqn-pure-v1');
+        targetModel = await tf.loadLayersModel('localstorage://dqn-pure-v1');
+        document.getElementById('ia-status').innerText = "Mode Pur : Chargé";
     } catch (e) {
         model = createModel();
         targetModel = createModel();
-        document.getElementById('ia-status').innerText = "Nouveau DQN";
+        document.getElementById('ia-status').innerText = "Mode Pur : Initialisé";
     }
     updateStatsDisplay();
     renderBoard();
 }
 
-// 2. GESTION DE LA MÉMOIRE (Experience Replay)
-function remember(state, action, reward, nextState, done) {
-    memory.push({state, action, reward, nextState, done});
-    if (memory.length > MEMORY_SIZE) memory.shift();
-}
-
-// 3. LOGIQUE DE JEU & ANTICIPATION
+// 2. PRÉDICTION SANS AUCUNE RÈGLE (Instinct pur)
 function getBestMove(grid, epsilon = 0) {
-    // Toujours bloquer ou gagner mathématiquement avant de demander au réseau
-    for (let c = 0; c < COLS; c++) {
-        let t = grid.map(r => [...r]);
-        if (dropToken(t, c, 2) && checkWinner(t, 2)) return c;
-        t = grid.map(r => [...r]);
-        if (dropToken(t, c, 1) && checkWinner(t, 1)) return c;
-    }
-
+    // PLUS DE RÈGLES D'OR ICI. L'IA est seule face à ses choix.
     if (Math.random() < epsilon) return Math.floor(Math.random() * COLS);
 
     return tf.tidy(() => {
@@ -61,17 +53,14 @@ function getBestMove(grid, epsilon = 0) {
     });
 }
 
-// 4. ENTRAÎNEMENT PAR REPLAY (Le coeur du DQN)
-async function trainBatch(size = 64) {
+// 3. ENTRAÎNEMENT PAR REPLAY
+async function trainBatch(size = 128) { // Batch d'entraînement plus grand
     if (memory.length < size) return;
-
     const batch = [];
     for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
 
     const states = tf.tensor2d(batch.map(m => m.state));
     const nextStates = tf.tensor2d(batch.map(m => m.nextState));
-    
-    // On prédit les Q-values actuelles et futures
     const currentQ = model.predict(states);
     const nextQ = targetModel.predict(nextStates);
 
@@ -81,71 +70,74 @@ async function trainBatch(size = 64) {
     batch.forEach((m, i) => {
         let target = m.reward;
         if (!m.done) {
-            // Équation de Bellman
             target = m.reward + GAMMA * Math.max(...nextQValues[i]);
         }
         qValues[i][m.action] = target;
     });
 
     await model.fit(states, tf.tensor2d(qValues), {epochs: 1, silent: true});
-    
-    states.dispose(); nextStates.dispose(); currentQ.dispose(); nextQ.dispose();
+    tf.dispose([states, nextStates, currentQ, nextQ]);
 }
 
-// 5. SIMULATION RAFALE DQN
+// 4. SIMULATION RAFALE (BATCH SIZE 250)
 async function runTraining() {
     if (isTraining) return;
     isTraining = true;
-    const batchSize = 100;
-    let epsilon = 0.3; // Exploration
+    const batchSize = 250; 
+    let epsilon = 0.4; // On commence avec beaucoup d'exploration
 
     for (let i = 1; i <= batchSize; i++) {
         initBoard();
-        let turn = (i % 2 === 0) ? 1 : 2;
+        let turn = (Math.random() < 0.5) ? 1 : 2;
         let winner = 0;
+        epsilon = Math.max(0.05, 0.4 - (i / batchSize)); // Epsilon Decay : elle devient plus sérieuse avec le temps
 
         while (true) {
-            let state = board.flat();
+            let state = [...board.flat()];
             let col = getBestMove(board, epsilon);
             if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
 
-            let prevBoard = [...state];
             if (dropToken(board, col, turn)) {
-                let done = checkWinner(board, turn) || board.flat().every(v => v !== 0);
-                let reward = 0;
-                if (done) {
-                    winner = turn;
-                    reward = (turn === 2) ? 10 : -10; // Récompense forte
-                }
+                let isWin = checkWinner(board, turn);
+                let isDraw = !isWin && board.flat().every(v => v !== 0);
+                let done = isWin || isDraw;
+                
+                // SYSTÈME DE RÉCOMPENSE "BRUT"
+                let reward = 0.1; // Petite récompense pour avoir survécu un coup de plus
+                if (isWin) reward = (turn === 2) ? 15 : -15; // Gros choc en cas de défaite/victoire
+                if (isDraw) reward = 2; // Le nul est positif pour l'IA
 
-                remember(prevBoard, col, reward, board.flat(), done);
-                if (done) break;
+                remember(state, col, reward, board.flat(), done);
+                if (done) { winner = isWin ? turn : 0; break; }
                 turn = (turn === 1) ? 2 : 1;
             } else break;
-
-            if (i % 5 === 0) { renderBoard(); await new Promise(requestAnimationFrame); }
         }
 
         totalGames++;
         if (winner === 2) aiWins++;
         updateStatsDisplay();
 
-        await trainBatch(64);
+        await trainBatch(128);
 
-        // Toutes les 10 parties, on synchronise le Target Model
         if (i % 10 === 0) {
             targetModel.setWeights(model.getWeights());
-            document.getElementById('status').innerText = `DQN Sync : Match ${i}/100`;
+            document.getElementById('status').innerText = `Apprentissage Pur : ${i}/250 (Explo: ${(epsilon*100).toFixed(0)}%)`;
+            renderBoard();
+            await new Promise(requestAnimationFrame);
         }
     }
 
-    await model.save('localstorage://dqn-v1');
+    await model.save('localstorage://dqn-pure-v1');
     isTraining = false;
-    document.getElementById('status').innerText = "DQN Optimisé !";
+    document.getElementById('status').innerText = "Cycle d'auto-apprentissage terminé.";
     initBoard(); renderBoard();
 }
 
-// --- Fonctions utilitaires standards ---
+// --- Fonctions de base (Inchangées mais nécessaires) ---
+function remember(state, action, reward, nextState, done) {
+    memory.push({state, action, reward, nextState, done});
+    if (memory.length > MEMORY_SIZE) memory.shift();
+}
 function initBoard() { board = Array(ROWS).fill().map(() => Array(COLS).fill(0)); }
 function dropToken(g, c, p) {
     if (c < 0 || c >= COLS || g[0][c] !== 0) return false;
@@ -163,26 +155,26 @@ function updateStatsDisplay() {
     document.getElementById('total-games').innerText = totalGames;
     const rate = totalGames > 0 ? ((aiWins / totalGames) * 100).toFixed(1) : 0;
     document.getElementById('ai-winrate').innerText = rate;
-    localStorage.setItem('dqn_totalGames', totalGames);
-    localStorage.setItem('dqn_aiWins', aiWins);
+    localStorage.setItem('dqn_pure_totalGames', totalGames);
+    localStorage.setItem('dqn_pure_aiWins', aiWins);
 }
 async function handleMove(col) {
     if (isTraining || board[0][col] !== 0) return;
     if (dropToken(board, col, 1)) {
         renderBoard();
-        if (checkWinner(board, 1)) { totalGames++; updateStatsDisplay(); return alert("Bravo !"); }
+        if (checkWinner(board, 1)) { totalGames++; updateStatsDisplay(); document.getElementById('status').innerText = "Victoire Humaine !"; return; }
         setTimeout(() => {
             let aiCol = getBestMove(board);
             if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
             dropToken(board, aiCol, 2);
             renderBoard();
-            if (checkWinner(board, 2)) { totalGames++; aiWins++; updateStatsDisplay(); alert("L'IA gagne !"); }
+            if (checkWinner(board, 2)) { totalGames++; aiWins++; updateStatsDisplay(); document.getElementById('status').innerText = "L'IA a appris à gagner !"; }
         }, 200);
     }
 }
 
 document.getElementById('btn-reset').onclick = () => { initBoard(); renderBoard(); };
 document.getElementById('btn-train').onclick = runTraining;
-document.getElementById('btn-save').onclick = () => model.save('localstorage://dqn-v1');
+document.getElementById('btn-save').onclick = () => model.save('localstorage://dqn-pure-v1');
 
 initBoard(); initIA();
