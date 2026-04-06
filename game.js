@@ -101,23 +101,61 @@ function checkWinner(grid, p) {
 }
 
 // 8. Entraînement automatique (Self-Play)
+// Fonction utilitaire pour ralentir l'affichage
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function runTraining() {
+    if (isTraining) return;
     isTraining = true;
-    const iterations = 20;
+    const iterations = 10; // On réduit un peu car c'est plus lent à regarder
+    
     for (let i = 1; i <= iterations; i++) {
-        document.getElementById('status').innerText = `Entraînement : ${i}/${iterations}`;
-        let localBoard = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        initBoard(); // On vide le plateau pour la nouvelle partie d'entraînement
+        renderBoard();
+        
         let moves = [];
         let turn = 1;
-        
+        let gameOver = false;
+
+        document.getElementById('status').innerText = `Match Auto : ${i}/${iterations}`;
+
         for (let step = 0; step < 42; step++) {
-            let col = Math.random() < 0.3 ? Math.floor(Math.random() * 7) : getBestMove(localBoard);
-            if (dropToken(localBoard, col, turn)) {
-                moves.push({state: localBoard.flat(), move: col, player: turn});
-                if (checkWinner(localBoard, turn)) break;
+            // L'IA choisit un coup
+            let col = Math.random() < 0.2 ? Math.floor(Math.random() * 7) : getBestMove(board);
+            
+            if (dropToken(board, col, turn)) {
+                moves.push({state: board.flat(), move: col, player: turn});
+                renderBoard(); // ON AFFICHE LE PION
+                
+                if (checkWinner(board, turn)) {
+                    gameOver = true;
+                    document.getElementById('status').innerText = `Victoire Joueur ${turn} !`;
+                    break;
+                }
+                
                 turn = turn === 1 ? 2 : 1;
+                await sleep(100); // PAUSE de 100ms pour voir le pion tomber
             }
         }
+
+        // L'IA apprend de cette partie qu'on vient de voir
+        const states = tf.tensor2d(moves.map(m => m.state));
+        const labels = tf.tensor2d(moves.map(m => {
+            let l = Array(7).fill(0);
+            l[m.move] = 1;
+            return l;
+        }));
+        
+        await model.fit(states, labels, {epochs: 1});
+        await sleep(500); // Petite pause entre les matchs
+    }
+
+    isTraining = false;
+    document.getElementById('status').innerText = "Entraînement visuel fini !";
+    initBoard();
+    renderBoard();
+}
+
         // Apprentissage simple : on renforce les coups du dernier joueur (gagnant potentiel)
         const states = tf.tensor2d(moves.map(m => m.state));
         const labels = tf.tensor2d(moves.map(m => {
