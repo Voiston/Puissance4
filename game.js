@@ -142,6 +142,12 @@ async function loadAI() {
     }
 }
 
+function resetGame() {
+    board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+    renderBoard();
+    document.getElementById('status').innerText = "Nouvelle partie ! À vous de jouer.";
+}
+
 async function playerMove(col) {
     if (dropToken(col, PLAYER)) {
         renderBoard();
