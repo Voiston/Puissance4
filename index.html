@@ -2,45 +2,193 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Puissance 4 IA - Master Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Puissance 4 - Neural Arena</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2c3e50; color: white; text-align: center; margin: 0; padding: 10px; }
-        .container { max-width: 600px; margin: auto; }
-        .stats-bar { background: #34495e; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-around; font-size: 0.9em; border: 1px solid #465c71; }
-        .stat-value { color: #3498db; font-weight: bold; }
-        .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; background: #34495e; padding: 15px; border-radius: 15px; border: 4px solid #2c3e50; }
-        .cell { aspect-ratio: 1/1; background: #ecf0f1; border-radius: 50%; cursor: pointer; border: 2px solid #2c3e50; transition: 0.2s; }
-        .cell:hover { background: #bdc3c7; }
-        .cell.player { background: #e74c3c; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
-        .cell.ai { background: #f1c40f; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
-        .controls { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-        button { padding: 12px 20px; font-size: 14px; border: none; border-radius: 8px; cursor: pointer; background: #3498db; color: white; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #2980b9; transform: translateY(-2px); }
-        #status { margin: 15px; font-weight: bold; color: #ecf0f1; height: 24px; font-size: 1.1em; }
+        /* --- VARIABLES & RESET --- */
+        :root {
+            --bg-color: #12121c;
+            --panel-bg: #1e1e2f;
+            --board-bg: #2a2a40;
+            --cell-empty: #161622;
+            --player-a: #ff4757; /* Rouge néon */
+            --player-b: #ffa502; /* Jaune néon */
+            --text-main: #f1f2f6;
+            --text-muted: #a4b0be;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Poppins', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+        }
+
+        /* --- EN-TÊTE --- */
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: -webkit-linear-gradient(45deg, var(--player-a), var(--player-b));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        #ia-status {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 12px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        /* --- STATUT DU JEU --- */
+        .status-panel {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #status {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
+            transition: color 0.3s;
+        }
+
+        /* --- LE PLATEAU (GRILLE) --- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            background: var(--board-bg);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: inset 0 10px 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 25px;
+        }
+
+        .cell {
+            aspect-ratio: 1/1;
+            background: var(--cell-empty);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Effet au survol uniquement sur les cases vides */
+        .cell:not(.player):not(.ai):hover {
+            background: #232336;
+            transform: scale(0.95);
+        }
+
+        /* Les Pions avec effet 3D (Gradients) */
+        .cell.player {
+            background: radial-gradient(circle at 30% 30%, #ff6b81, var(--player-a));
+            box-shadow: 0 0 15px rgba(255, 71, 87, 0.4), inset 0 -5px 10px rgba(0,0,0,0.4);
+            cursor: default;
+        }
+
+        .cell.ai {
+            background: radial-gradient(circle at 30% 30%, #ffc048, var(--player-b));
+            box-shadow: 0 0 15px rgba(255, 165, 2, 0.4), inset 0 -5px 10px rgba(0,0,0,0.4);
+            cursor: default;
+        }
+
+        /* --- CONTRÔLES & BOUTONS --- */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: white;
+            transition: transform 0.1s, filter 0.2s, box-shadow 0.2s;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        button:active { transform: scale(0.95); }
+        button:hover { filter: brightness(1.15); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+
+        #btn-reset { background: #2ed573; grid-column: span 2; } /* Vert */
+        #btn-train-a { background: var(--player-a); } /* Rouge */
+        #btn-train-b { background: var(--player-b); } /* Jaune */
+        #btn-arena { background: #5352ed; grid-column: span 2; font-size: 1rem; padding: 15px; } /* Bleu violet */
+
+        /* Responsive : Ajustements pour les petits écrans */
+        @media (max-width: 400px) {
+            .grid { gap: 6px; padding: 10px; }
+            .controls { display: flex; flex-direction: column; }
+            #btn-reset, #btn-arena { width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Puissance 4 IA</h1>
-        
-        <div class="stats-bar">
-            <div>Matches : <span id="total-games" class="stat-value">0</span></div>
-            <div>Winrate IA : <span id="ai-winrate" class="stat-value">0</span>%</div>
-            <div>Statut : <span id="ia-status" class="stat-value">Chargement...</span></div>
-        </div>
 
-        <div id="status">Prêt à jouer</div>
+    <div class="container">
+        <header>
+            <h1>Neural Arena</h1>
+            <span id="ia-status">Vérification des réseaux...</span>
+        </header>
+
+        <div class="status-panel">
+            <div id="status">Initialisation...</div>
+        </div>
 
         <div id="board" class="grid"></div>
 
         <div class="controls">
-            <button id="btn-reset">Nouvelle Partie</button>
-            <button id="btn-train" style="background:#8e44ad">Rafale (100 matches)</button>
-            <button id="btn-save" style="background:#27ae60">Sauvegarde Manuelle</button>
+            <button id="btn-reset">Jouer vs IA-A (Rouge)</button>
+            <button id="btn-train-a">Entraîner IA-A</button>
+            <button id="btn-train-b">Entraîner IA-B</button>
+            <button id="btn-arena">⚔️ ARÈNE : IA-A vs IA-B ⚔️</button>
         </div>
     </div>
+
     <script src="game.js"></script>
 </body>
 </html>
