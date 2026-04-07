@@ -5,13 +5,12 @@ let isTraining = false;
 
 // Paramètres DQN Équilibrés
 const GAMMA = 0.97;
-const MEMORY_SIZE = 5000; // Réduit pour économiser la RAM sur mobile
+const MEMORY_SIZE = 5000; 
 let memory = []; 
 
 let totalGames = parseInt(localStorage.getItem('dqn_pure_totalGames')) || 0;
 let aiWins = parseInt(localStorage.getItem('dqn_pure_aiWins')) || 0;
 
-// 1. INITIALISATION PROPRE
 function initBoard() {
     board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
 }
@@ -36,7 +35,6 @@ async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        // 64 filtres : le bon compromis puissance/mémoire
         m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.flatten());
@@ -57,10 +55,8 @@ async function initIA() {
     renderBoard();
 }
 
-// 2. PRÉDICTION SÉCURISÉE (tf.tidy évite les fuites)
 function getBestMove(grid, epsilon = 0) {
     if (Math.random() < epsilon) return Math.floor(Math.random() * COLS);
-    
     return tf.tidy(() => {
         const input = tf.tensor2d([grid.flat()]);
         const pred = model.predict(input);
@@ -68,41 +64,30 @@ function getBestMove(grid, epsilon = 0) {
     });
 }
 
-// 3. ENTRAÎNEMENT AVEC NETTOYAGE RADICAL
 async function trainBatch(size = 64) {
     if (memory.length < size) return;
-
-    // Utilisation de tf.tidy pour nettoyer automatiquement les tenseurs intermédiaires
     const loss = tf.tidy(() => {
         const batch = [];
         for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
-
         const states = tf.tensor2d(batch.map(m => m.state));
         const nextStates = tf.tensor2d(batch.map(m => m.nextState));
-        
         const currentQ = model.predict(states);
         const nextQ = targetModel.predict(nextStates);
-
         const qValues = currentQ.arraySync();
         const nextQValues = nextQ.arraySync();
-
         batch.forEach((m, i) => {
             let target = m.reward;
             if (!m.done) target = m.reward + GAMMA * Math.max(...nextQValues[i]);
             qValues[i][m.action] = target;
         });
-
         return { states, qValues: tf.tensor2d(qValues) };
     });
-
     await model.fit(loss.states, loss.qValues, {epochs: 1, silent: true});
-    
-    // Nettoyage manuel des tenseurs restants
     loss.states.dispose();
     loss.qValues.dispose();
 }
 
-// 4. SIMULATION RAFALE DOUCE
+// 4. SIMULATION RAFALE 120HZ (MISE À JOUR)
 async function runTraining() {
     if (isTraining) return;
     isTraining = true;
@@ -116,15 +101,24 @@ async function runTraining() {
         while (true) {
             let state = [...board.flat()];
             let col = getBestMove(board, epsilon);
-            if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].filter(c => board[0][c] === 0)[0];
+            
+            // Sécurité colonne pleine
+            if (board[0][col] !== 0) {
+                col = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
+                if (col === undefined) break; 
+            }
 
             if (dropToken(board, col, turn)) {
                 let isWin = checkWinner(board, turn);
                 let done = isWin || board.flat().every(v => v !== 0);
-                let reward = isWin ? (turn === 2 ? 15 : -15) : 0.05;
+                let reward = isWin ? (turn === 2 ? 15 : -15) : 0.02;
 
                 memory.push({state, action: col, reward, nextState: [...board.flat()], done});
                 if (memory.length > MEMORY_SIZE) memory.shift();
+
+                // RENDU VISUEL 120HZ
+                renderBoard();
+                await new Promise(requestAnimationFrame); 
 
                 if (done) { if(isWin && turn === 2) aiWins++; break; }
                 turn = (turn === 1) ? 2 : 1;
@@ -132,25 +126,25 @@ async function runTraining() {
         }
 
         totalGames++;
+        
+        // On entraîne entre chaque match pour ne pas surcharger la boucle de jeu
         await trainBatch(64);
 
         if (i % 20 === 0) {
             targetModel.setWeights(model.getWeights());
             updateStatsDisplay();
-            document.getElementById('status').innerText = `Stable : ${i}/250`;
-            renderBoard();
-            // PAUSE CRUCIAL : laisse le navigateur souffler et vider la mémoire
-            await new Promise(resolve => setTimeout(resolve, 50)); 
+            document.getElementById('status').innerText = `Rafale : ${i}/250`;
+            // Petite pause pour laisser le Garbage Collector bosser
+            await new Promise(resolve => setTimeout(resolve, 10)); 
         }
     }
 
     await model.save('localstorage://dqn-pure-v2');
     isTraining = false;
-    document.getElementById('status').innerText = "Session terminée sans crash !";
+    document.getElementById('status').innerText = "Session 120Hz terminée !";
     initBoard(); renderBoard();
 }
 
-// Fonctions techniques standards (inchangées)
 function dropToken(g, c, p) {
     if (c < 0 || c >= COLS || g[0][c] !== 0) return false;
     for (let r = ROWS - 1; r >= 0; r--) { if (g[r][c] === 0) { g[r][c] = p; return true; } }
