@@ -300,9 +300,22 @@ async function handleMove(col) {
             await trainBatch('A', 256);
             await trainBatch('A', 256);
 
-            if (aiWon) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
-            else if (aiDraw) document.getElementById('status').innerText = "Nul !";
-            else document.getElementById('status').innerText = "À toi.";
+            // GESTION DE LA FIN DE PARTIE
+            if (aiWon) {
+                document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
+            } else if (aiDraw) {
+                document.getElementById('status').innerText = "Nul !";
+            } else {
+                document.getElementById('status').innerText = "À toi.";
+            }
+
+            // 💾 NOUVEAU : SAUVEGARDE ET STABILISATION EN FIN DE PARTIE
+            if (done) {
+                // On met à jour le repère de l'IA et on sauvegarde
+                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+                await AIs['A'].model.save(AIs['A'].storage);
+                console.log("Partie humaine terminée : IA sauvegardée !");
+            }
         }
     }
 }
