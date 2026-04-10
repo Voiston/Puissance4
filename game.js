@@ -2,13 +2,14 @@ const ROWS = 6, COLS = 7;
 let board = [];
 let isTraining = false;
 let isArena = false;
-let stopTrainingRequested = false; // Nouveau : permet d'arrêter la boucle
+let stopTrainingRequested = false;
+let isProcessingMove = false; // Verrou de sécurité anti-autoclicker
+let lastAITurnContext = null; // Permet de punir l'IA avec précision
 
-// Paramètres DQN "PC Edition"
-const GAMMA = 0.99; // Vision très long terme
-const MEMORY_SIZE = 100000; // Utilisation de la RAM du PC pour un meilleur historique
+// Paramètres DQN
+const GAMMA = 0.99; 
+const MEMORY_SIZE = 60000; // Taille idéale pour la réactivité face à un humain
 
-// Nos deux gladiateurs
 const AIs = {
     'A': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-a' },
     'B': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-b' }
@@ -20,7 +21,7 @@ function initBoard() {
 }
 
 function renderBoard() {
-    if (isTraining) return; // Économie totale du GPU pour le calcul pur
+    if (isTraining) return; 
     const gridEl = document.getElementById('board');
     if (!gridEl) return;
     gridEl.innerHTML = '';
@@ -38,7 +39,6 @@ function renderBoard() {
 
 // 2. CRÉATION DES DEUX CERVEAUX
 async function initIA() {
-    // On extrait la compilation dans une fonction à part pour pouvoir la réutiliser
     const compileModel = (m) => {
         m.compile({optimizer: tf.train.adam(0.00025), loss: 'meanSquaredError'});
         return m;
@@ -47,44 +47,33 @@ async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        m.add(tf.layers.conv2d({filters: 256, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 256, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 256, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.flatten());
-        m.add(tf.layers.dense({units: 1024, activation: 'relu'}));
         m.add(tf.layers.dense({units: 512, activation: 'relu'}));
+        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
         m.add(tf.layers.dense({units: 7, activation: 'linear'}));
-        
-        return compileModel(m); // On compile le nouveau modèle
+        return compileModel(m); 
     };
 
-    // Charger ou créer IA-A
     try { 
         AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); 
         AIs['A'].target = await tf.loadLayersModel(AIs['A'].storage); 
-        
-        compileModel(AIs['A'].model);
-        compileModel(AIs['A'].target);
-    }
-    catch (e) { 
-        AIs['A'].model = createModel(); 
-        AIs['A'].target = createModel(); 
+        compileModel(AIs['A'].model); compileModel(AIs['A'].target);
+    } catch (e) { 
+        AIs['A'].model = createModel(); AIs['A'].target = createModel(); 
     }
 
-    // Charger ou créer IA-B
     try { 
         AIs['B'].model = await tf.loadLayersModel(AIs['B'].storage); 
         AIs['B'].target = await tf.loadLayersModel(AIs['B'].storage); 
-        
-        compileModel(AIs['B'].model);
-        compileModel(AIs['B'].target);
-    }
-    catch (e) { 
-        AIs['B'].model = createModel(); 
-        AIs['B'].target = createModel(); 
+        compileModel(AIs['B'].model); compileModel(AIs['B'].target);
+    } catch (e) { 
+        AIs['B'].model = createModel(); AIs['B'].target = createModel(); 
     }
 
-    document.getElementById('ia-status').innerText = "IA A et B prêtes (Mode Haute Performance)";
+    document.getElementById('ia-status').innerText = "IA A et B prêtes (Mode Double DQN + Symétrie)";
     renderBoard();
 }
 
@@ -102,59 +91,86 @@ function getBestMove(grid, aiName, epsilon = 0) {
     });
 }
 
-// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE
-async function trainBatch(aiName, size = 1024) {
+// 🌟 NOUVEAU : GESTIONNAIRE DE MÉMOIRE (SYMÉTRIE) 🌟
+function getMirroredState(flatBoard) {
+    let mirrored = new Array(42);
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            mirrored[r * COLS + c] = flatBoard[r * COLS + (COLS - 1 - c)];
+        }
+    }
+    return mirrored;
+}
+
+function saveMemory(aiName, state, action, reward, nextState, done, clones = 1) {
+    const memory = AIs[aiName].memory;
+    const mirroredState = getMirroredState(state);
+    const mirroredNextState = getMirroredState(nextState);
+    const mirroredAction = (COLS - 1) - action; 
+
+    for (let i = 0; i < clones; i++) {
+        memory.push({ state, action, reward, nextState, done });
+        // Bonus Symétrie gratuit !
+        memory.push({ state: mirroredState, action: mirroredAction, reward, nextState: mirroredNextState, done });
+    }
+
+    while (memory.length > MEMORY_SIZE) memory.shift();
+}
+
+// 🌟 NOUVEAU : ENTRAÎNEMENT AVEC DOUBLE DQN 🌟
+async function trainBatch(aiName, size = 512) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
-    // 1. On prépare notre lot d'exemples aléatoires
     const batch = [];
     for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
 
-    // 2. On utilise tf.tidy pour calculer nos valeurs sans fuite de mémoire.
     const { x, y } = tf.tidy(() => {
         const states = tf.tensor2d(batch.map(m => m.state));
         const nextStates = tf.tensor2d(batch.map(m => m.nextState));
         
         const currentQ = AIs[aiName].model.predict(states);
-        const nextQ = AIs[aiName].target.predict(nextStates);
+        
+        // Double Cerveau
+        const nextQMain = AIs[aiName].model.predict(nextStates);
+        const nextQTarget = AIs[aiName].target.predict(nextStates);
         
         const qValues = currentQ.arraySync();
-        const nextQValues = nextQ.arraySync();
+        const nextQMainValues = nextQMain.arraySync();
+        const nextQTargetValues = nextQTarget.arraySync();
 
         batch.forEach((m, i) => {
             let target = m.reward;
-            if (!m.done) target = m.reward + GAMMA * Math.max(...nextQValues[i]);
+            if (!m.done) {
+                let bestFutureAction = nextQMainValues[i].indexOf(Math.max(...nextQMainValues[i]));
+                let futureValue = nextQTargetValues[i][bestFutureAction];
+                target = m.reward + GAMMA * futureValue;
+            }
             qValues[i][m.action] = target;
         });
 
         return { x: states, y: tf.tensor2d(qValues) };
     });
 
-    // 3. On attend PROPREMENT la fin de l'entraînement en dehors du tf.tidy
     await AIs[aiName].model.fit(x, y, {epochs: 1, silent: true});
-
-    // 4. On nettoie manuellement x et y maintenant que fit() a terminé
-    x.dispose();
-    y.dispose();
+    x.dispose(); y.dispose();
 }
 
+// 5. BOUCLE D'ENTRAÎNEMENT INVISIBLE
 async function runTraining(aiName) {
-    if (isTraining || isArena) return;
+    if (isTraining || isArena || isProcessingMove) return;
     isTraining = true;
-    stopTrainingRequested = false; // On réinitialise la demande d'arrêt
+    stopTrainingRequested = false; 
     
-    let gamesPlayed = 0; // On compte les parties au lieu d'avoir un nombre fixe
+    let gamesPlayed = 0; 
     const statusText = document.getElementById('status');
     statusText.innerText = `Entraînement IA-${aiName} démarré...`;
 
-    // Boucle infinie, qui s'arrête si on passe stopTrainingRequested à true
     while (!stopTrainingRequested) {
         gamesPlayed++;
         initBoard();
         let turn = (Math.random() < 0.5) ? 1 : 2; 
         
-        // Epsilon diminue en continu, mais se bloque à 10% d'exploration minimum
         let epsilon = Math.max(0.10, 0.8 - (gamesPlayed / 10000));
 
         while (true) {
@@ -170,42 +186,37 @@ async function runTraining(aiName) {
                 
                 let reward = calculateReward(board, col, turn, win, done && !win);
 
-                AIs[aiName].memory.push({state, action: col, reward, nextState: [...board.flat()], done});
-                if (AIs[aiName].memory.length > MEMORY_SIZE) AIs[aiName].memory.shift();
+                // Sauvegarde optimisée (réelle + miroir)
+                saveMemory(aiName, state, col, reward, [...board.flat()], done, 1);
                 
                 if (done) break;
                 turn = (turn === 1) ? 2 : 1;
             } else break;
         }
 
-        // On entraîne le réseau
-        await trainBatch(aiName, 1024); 
+        await trainBatch(aiName, 512); 
 
-        // Mise à jour de l'affichage toutes les 10 parties pour ne pas saturer l'écran
         if (gamesPlayed % 10 === 0) {
-            statusText.innerText = `Entraînement IA-${aiName} : ${gamesPlayed} parties jouées (Clique sur ton bouton pour stopper)`;
+            statusText.innerText = `Entraînement IA-${aiName} : ${gamesPlayed} parties jouées (Clique pour stopper)`;
         }
 
-        // Toutes les 200 parties : stabilité et SAUVEGARDE AUTO
         if (gamesPlayed % 200 === 0) {
             AIs[aiName].target.setWeights(AIs[aiName].model.getWeights());
-            await AIs[aiName].model.save(AIs[aiName].storage); // Sauvegarde en arrière-plan !
+            await AIs[aiName].model.save(AIs[aiName].storage); 
         }
         
-        // CRUCIAL : Laisse le navigateur respirer 1 milliseconde pour éviter le crash
-        // et permettre d'écouter le clic sur le bouton Stop.
         await tf.nextFrame(); 
     }
 
-    // -- FIN DE L'ENTRAÎNEMENT (Quand on a cliqué sur Stop) --
     await AIs[aiName].model.save(AIs[aiName].storage);
     isTraining = false;
     statusText.innerText = `Entraînement stoppé ! IA-${aiName} optimisée sur ${gamesPlayed} parties.`;
     initBoard(); renderBoard();
 }
+
 // 6. LE COMBAT DES TITANS (IA-A vs IA-B)
 async function runArena() {
-    if (isTraining || isArena) return;
+    if (isTraining || isArena || isProcessingMove) return;
     isArena = true;
     initBoard(); renderBoard();
     
@@ -213,7 +224,6 @@ async function runArena() {
     await new Promise(r => setTimeout(r, 1000));
 
     let turn = 1; 
-    
     while (true) {
         let activeAI = turn === 1 ? 'A' : 'B';
         let col = getBestMove(board, activeAI, 0); 
@@ -242,125 +252,98 @@ async function runArena() {
     isArena = false;
 }
 
-// 7. JOUER MANUELLEMENT CONTRE IA-A (Avec traumatisme rétroactif)
+// 7. JOUER MANUELLEMENT (Avec Lock, Symétrie et Double DQN)
 async function handleMove(col) {
-    if (isTraining || isArena || board[0][col] !== 0) return;
+    if (isTraining || isArena || isProcessingMove || board[0][col] !== 0) return;
 
-    // --- TOUR DU JOUEUR (Toi ou l'autoclicker) ---
-    if (dropToken(board, col, 1)) { 
-        renderBoard();
-        let humanWon = checkWinner(board, 1);
-        let isDraw = board.flat().every(v => v !== 0);
+    isProcessingMove = true; // 🔒 VERROU : On bloque les clics intempestifs
 
-        // SI L'HUMAIN GAGNE : ON PUNIT L'IA !
-        if (humanWon || isDraw) { 
-            document.getElementById('status').innerText = humanWon ? "Tu as battu l'IA-A !" : "Nul !"; 
-            
-            // 💥 LA CORRECTION EST ICI : LA PUNITION DE FIN DE PARTIE 💥
-            if (humanWon && AIs['A'].memory.length > 0) {
-                // L'IA récupère son dernier souvenir (le coup qu'elle a joué juste avant toi)
-                let lastMemory = AIs['A'].memory[AIs['A'].memory.length - 1];
-                
-                // Elle réalise que c'était le coup qui a causé sa perte
-                lastMemory.reward = -100; // Punition ultime !
-                lastMemory.done = true;
-
-                // On sur-échantillonne cette erreur pour ne plus JAMAIS la reproduire (x50)
-                for(let i = 0; i < 50; i++) {
-                    AIs['A'].memory.push({...lastMemory});
-                }
-                
-                // Elle s'entraîne immédiatement sur sa défaite
-                await trainBatch('A', 256);
-                await trainBatch('A', 256);
-                
-                // Elle sauvegarde la leçon pour l'avenir
-                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
-                await AIs['A'].model.save(AIs['A'].storage);
-            }
-            return; 
-        }
-
-        document.getElementById('status').innerText = "L'IA-A réfléchit...";
-        await new Promise(r => setTimeout(r, 50)); 
-
-        // --- TOUR DE L'IA (Le reste du code ne change pas) ---
-        let stateBeforeAI = [...board.flat()]; 
-        
-        let aiCol = getBestMove(board, 'A', 0); 
-        if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
-
-        if (aiCol !== undefined && dropToken(board, aiCol, 2)) { 
+    try {
+        if (dropToken(board, col, 1)) { 
             renderBoard();
+            let humanWon = checkWinner(board, 1);
+            let isDraw = board.flat().every(v => v !== 0);
+
+            // SI L'HUMAIN GAGNE : PUNITION CHIRURGICALE
+            if (humanWon || isDraw) { 
+                document.getElementById('status').innerText = humanWon ? "Tu as battu l'IA-A !" : "Nul !"; 
+                
+                if (humanWon && lastAITurnContext) {
+                    // On punit l'IA x25 (qui devient x50 grâce à la symétrie) sur son dernier coup précis
+                    saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, -100, lastAITurnContext.nextState, true, 25);
+                    
+                    await trainBatch('A', 256);
+                    await trainBatch('A', 256);
+                    
+                    AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+                    await AIs['A'].model.save(AIs['A'].storage);
+                }
+                lastAITurnContext = null;
+                return; 
+            }
+
+            document.getElementById('status').innerText = "L'IA-A réfléchit...";
+            await new Promise(r => setTimeout(r, 50)); 
+
+            // --- TOUR DE L'IA ---
+            let stateBeforeAI = [...board.flat()]; 
             
-            let aiWon = checkWinner(board, 2);
-            let aiDraw = board.flat().every(v => v !== 0);
-            let done = aiWon || aiDraw;
+            let aiCol = getBestMove(board, 'A', 0); 
+            if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
 
-            let reward = calculateReward(board, aiCol, 2, aiWon, aiDraw);
+            if (aiCol !== undefined && dropToken(board, aiCol, 2)) { 
+                renderBoard();
+                
+                let aiWon = checkWinner(board, 2);
+                let aiDraw = board.flat().every(v => v !== 0);
+                let done = aiWon || aiDraw;
 
-            // On clone les bonnes actions normales aussi
-            for(let i = 0; i < 50; i++) {
-                AIs['A'].memory.push({
-                    state: stateBeforeAI, 
-                    action: aiCol, 
-                    reward: reward, 
-                    nextState: [...board.flat()], 
-                    done: done
-                });
-            }
+                let reward = calculateReward(board, aiCol, 2, aiWon, aiDraw);
 
-            while(AIs['A'].memory.length > MEMORY_SIZE) AIs['A'].memory.shift();
+                // On stocke le contexte exact pour la punition potentielle au tour d'après
+                lastAITurnContext = { state: stateBeforeAI, action: aiCol, nextState: [...board.flat()] };
 
-            await trainBatch('A', 256);
-            await trainBatch('A', 256);
-            await trainBatch('A', 256);
+                // Oversampling de ses parties avec l'humain (clones = 25 -> 50 avec symétrie)
+                saveMemory('A', stateBeforeAI, aiCol, reward, [...board.flat()], done, 25);
 
-            if (aiWon) {
-                document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
-            } else if (aiDraw) {
-                document.getElementById('status').innerText = "Nul !";
-            } else {
-                document.getElementById('status').innerText = "À toi.";
-            }
+                await trainBatch('A', 256);
+                await trainBatch('A', 256);
+                await trainBatch('A', 256);
 
-            if (done) {
-                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
-                await AIs['A'].model.save(AIs['A'].storage);
+                if (aiWon) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
+                else if (aiDraw) document.getElementById('status').innerText = "Nul !";
+                else document.getElementById('status').innerText = "À toi.";
+
+                if (done) {
+                    AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+                    await AIs['A'].model.save(AIs['A'].storage);
+                    lastAITurnContext = null;
+                }
             }
         }
+    } finally {
+        isProcessingMove = false; // 🔓 DÉVERROUILLAGE : Toujours rouvrir la porte
     }
 }
 
-// 8. FONCTION DE RÉCOMPENSE AVANCÉE (Reward Shaping)
+// 8. FONCTION DE RÉCOMPENSE AVANCÉE
 function calculateReward(board, lastAction, currentPlayer, isWin, isDraw) {
-    // 1. Les fins de parties priment sur tout
     if (isWin) return 100;
     if (isDraw) return 2;
 
     let reward = 0;
     const opponent = (currentPlayer === 1) ? 2 : 1;
 
-    // 2. Micro-récompense stratégique : jouer au centre
-    if (lastAction === 3) {
-        reward += 2; 
-    } else if (lastAction === 2 || lastAction === 4) {
-        reward += 1; 
-    }
+    if (lastAction === 3) reward += 2; 
+    else if (lastAction === 2 || lastAction === 4) reward += 1; 
 
-    // 3. Récompenses d'Analyse
-    if (didBlockOpponentWin(board, lastAction, opponent)) {
-        reward += 50; // Bloquer une défaite imminente
-    }
-    
-    if (createdLineOfThree(board, lastAction, currentPlayer)) {
-        reward += 10; // Créer une opportunité
-    }
+    if (didBlockOpponentWin(board, lastAction, opponent)) reward += 50; 
+    if (createdLineOfThree(board, lastAction, currentPlayer)) reward += 10; 
 
     return reward;
 }
 
-// FONCTIONS STANDARDS ET UTILITAIRES D'ANALYSE
+// FONCTIONS STANDARDS ET UTILITAIRES
 function dropToken(g, c, p) {
     if (c < 0 || c >= COLS || g[0][c] !== 0) return false;
     for (let r = ROWS - 1; r >= 0; r--) { if (g[r][c] === 0) { g[r][c] = p; return true; } }
@@ -381,11 +364,10 @@ function didBlockOpponentWin(g, col, opponent) {
     if (r === ROWS) return false; 
 
     const originalColor = g[r][col];
-    g[r][col] = opponent; // Test fictif pour l'adversaire
-    
+    g[r][col] = opponent; 
     const blocked = checkWinner(g, opponent);
+    g[r][col] = originalColor; 
     
-    g[r][col] = originalColor; // Restauration
     return blocked;
 }
 
@@ -420,22 +402,20 @@ function createdLineOfThree(g, col, player) {
 // BINDING DES BOUTONS
 document.getElementById('btn-reset').onclick = () => { 
     isArena = false; stopTrainingRequested = true; 
+    lastAITurnContext = null;
     initBoard(); renderBoard(); 
     document.getElementById('status').innerText = "À toi vs IA-A."; 
 };
 
-// Fonction pour gérer le toggle Start/Stop
 function toggleTraining(aiName, btnId, originalText) {
     const btn = document.getElementById(btnId);
     if (isTraining && !stopTrainingRequested) {
-        // Si ça tourne, on demande l'arrêt
         stopTrainingRequested = true;
         btn.innerText = "Arrêt en cours...";
     } else if (!isTraining) {
-        // Si c'est à l'arrêt, on lance
         btn.innerText = `🛑 Stopper l'IA-${aiName}`;
         runTraining(aiName).then(() => {
-            btn.innerText = originalText; // On remet le texte normal à la fin
+            btn.innerText = originalText; 
         });
     }
 }
