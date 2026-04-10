@@ -214,39 +214,82 @@ async function runTraining(aiName) {
     initBoard(); renderBoard();
 }
 
-// 6. LE COMBAT DES TITANS (IA-A vs IA-B)
+// 6. L'ARÈNE ÉVOLUTIVE (Combat avec apprentissage)
 async function runArena() {
     if (isTraining || isArena || isProcessingMove) return;
     isArena = true;
     initBoard(); renderBoard();
     
-    document.getElementById('status').innerText = "⚔️ COMBAT : IA-A (Rouge) vs IA-B (Jaune) ⚔️";
+    document.getElementById('status').innerText = "⚔️ COMBAT ÉVOLUTIF : IA-A vs IA-B ⚔️";
     await new Promise(r => setTimeout(r, 1000));
 
     let turn = 1; 
+    let history = []; // On stocke le film du match pour l'analyser à la fin
+
     while (true) {
         let activeAI = turn === 1 ? 'A' : 'B';
-        let col = getBestMove(board, activeAI, 0); 
+        let opponentAI = turn === 1 ? 'B' : 'A';
+        
+        let stateBefore = [...board.flat()];
+        let col = getBestMove(board, activeAI, 0.05); // Petit Epsilon (5%) pour varier les matchs
         
         if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
+        
         if (col === undefined) {
-            document.getElementById('status').innerText = "Match Nul entre les deux IA !";
+            document.getElementById('status').innerText = "Match Nul !";
             break;
         }
 
         if (dropToken(board, col, turn)) {
             renderBoard();
-            await new Promise(r => setTimeout(r, 300)); 
+            
+            let win = checkWinner(board, turn);
+            let draw = board.flat().every(v => v !== 0);
+            let done = win || draw;
 
-            if (checkWinner(board, turn)) {
-                document.getElementById('status').innerText = `🏆 L'IA-${activeAI} a terrassé son adversaire !`;
+            // On note le mouvement dans l'historique du match
+            history.push({
+                aiName: activeAI,
+                state: stateBefore,
+                action: col,
+                nextState: [...board.flat()],
+                done: done
+            });
+
+            if (done) {
+                // --- PHASE D'APPRENTISSAGE POST-MATCH ---
+                if (win) {
+                    document.getElementById('status').innerText = `🏆 L'IA-${activeAI} gagne et apprend !`;
+                    
+                    // 1. On récompense le vainqueur (Poids faible : x5 -> x10 avec symétrie)
+                    let winnerMove = history[history.length - 1];
+                    saveMemory(activeAI, winnerMove.state, winnerMove.action, 100, winnerMove.nextState, true, 5);
+                    
+                    // 2. On punit le perdant (Poids faible : x5 -> x10 avec symétrie)
+                    // Le perdant est celui qui a joué juste avant le dernier coup
+                    if (history.length >= 2) {
+                        let loserMove = history[history.length - 2];
+                        saveMemory(opponentAI, loserMove.state, loserMove.action, -100, loserMove.nextState, true, 5);
+                    }
+                } else {
+                    document.getElementById('status').innerText = "Égalité !";
+                }
+
+                // 3. On lance un micro-entraînement pour les deux
+                await trainBatch('A', 256);
+                await trainBatch('B', 256);
+                
+                // 4. On synchronise et on sauvegarde
+                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+                AIs['B'].target.setWeights(AIs['B'].model.getWeights());
+                await AIs['A'].model.save(AIs['A'].storage);
+                await AIs['B'].model.save(AIs['B'].storage);
+                
                 break;
             }
-            if (board.flat().every(v => v !== 0)) {
-                 document.getElementById('status').innerText = "Égalité parfaite !";
-                 break;
-            }
+
             turn = (turn === 1) ? 2 : 1;
+            await new Promise(r => setTimeout(r, 100)); // Vitesse de l'arène
         } else break;
     }
     isArena = false;
