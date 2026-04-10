@@ -6,7 +6,7 @@ let stopTrainingRequested = false; // Nouveau : permet d'arrêter la boucle
 
 // Paramètres DQN "PC Edition"
 const GAMMA = 0.99; // Vision très long terme
-const MEMORY_SIZE = 180000; // Utilisation de la RAM du PC pour un meilleur historique
+const MEMORY_SIZE = 100000; // Utilisation de la RAM du PC pour un meilleur historique
 
 // Nos deux gladiateurs
 const AIs = {
