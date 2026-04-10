@@ -35,7 +35,7 @@ function renderBoard() {
     gridEl.appendChild(fragment);
 }
 
-// 2. CRÉATION DES DEUX CERVEAUX (Corrigé pour le rechargement)
+// 2. CRÉATION DES DEUX CERVEAUX
 async function initIA() {
     // On extrait la compilation dans une fonction à part pour pouvoir la réutiliser
     const compileModel = (m) => {
@@ -48,7 +48,7 @@ async function initIA() {
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
         m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 125, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.flatten());
         m.add(tf.layers.dense({units: 512, activation: 'relu'}));
         m.add(tf.layers.dense({units: 256, activation: 'relu'}));
@@ -62,7 +62,6 @@ async function initIA() {
         AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); 
         AIs['A'].target = await tf.loadLayersModel(AIs['A'].storage); 
         
-        // CORRECTION ICI : On recompile les modèles qu'on vient de charger !
         compileModel(AIs['A'].model);
         compileModel(AIs['A'].target);
     }
@@ -76,7 +75,6 @@ async function initIA() {
         AIs['B'].model = await tf.loadLayersModel(AIs['B'].storage); 
         AIs['B'].target = await tf.loadLayersModel(AIs['B'].storage); 
         
-        // CORRECTION ICI : On recompile aussi pour B
         compileModel(AIs['B'].model);
         compileModel(AIs['B'].target);
     }
@@ -88,6 +86,7 @@ async function initIA() {
     document.getElementById('ia-status').innerText = "IA A et B prêtes (Mode Haute Performance)";
     renderBoard();
 }
+
 // 3. PRÉDICTION SÉCURISÉE
 function getBestMove(grid, aiName, epsilon = 0) {
     if (Math.random() < epsilon) {
@@ -102,7 +101,7 @@ function getBestMove(grid, aiName, epsilon = 0) {
     });
 }
 
-// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE (Corrigé pour l'asynchronisme)
+// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE
 async function trainBatch(aiName, size = 512) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
@@ -112,7 +111,6 @@ async function trainBatch(aiName, size = 512) {
     for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
 
     // 2. On utilise tf.tidy pour calculer nos valeurs sans fuite de mémoire.
-    // On extrait les variables "x" (états) et "y" (récompenses) pour les sortir du tidy.
     const { x, y } = tf.tidy(() => {
         const states = tf.tensor2d(batch.map(m => m.state));
         const nextStates = tf.tensor2d(batch.map(m => m.nextState));
@@ -129,15 +127,13 @@ async function trainBatch(aiName, size = 512) {
             qValues[i][m.action] = target;
         });
 
-        // En retournant ces tenseurs, on indique à tf.tidy de NE PAS les détruire
-        // (Il détruira par contre currentQ, nextQ, nextStates, etc.)
         return { x: states, y: tf.tensor2d(qValues) };
     });
 
     // 3. On attend PROPREMENT la fin de l'entraînement en dehors du tf.tidy
     await AIs[aiName].model.fit(x, y, {epochs: 1, silent: true});
 
-    // 4. On nettoie manuellement x et y maintenant que fit() a terminé son travail
+    // 4. On nettoie manuellement x et y maintenant que fit() a terminé
     x.dispose();
     y.dispose();
 }
@@ -154,7 +150,7 @@ async function runTraining(aiName) {
         let turn = (Math.random() < 0.5) ? 1 : 2; 
         
         // Descente d'Epsilon plus douce pour encourager l'exploration sur le long terme
-        let epsilon = Math.max(0.10, 0.8 - (i / batchSize*0.8));
+        let epsilon = Math.max(0.10, 0.8 - (i / (batchSize * 0.8)));
 
         while (true) {
             let state = [...board.flat()];
@@ -167,8 +163,8 @@ async function runTraining(aiName) {
                 let win = checkWinner(board, turn);
                 let done = win || board.flat().every(v => v !== 0);
                 
-                let reward = win ? 20 : 0.05; 
-                if(done && !win) reward = 2; 
+                // NOUVEAU SYSTÈME DE RÉCOMPENSE INTÉGRÉ
+                let reward = calculateReward(board, col, turn, win, done && !win);
 
                 AIs[aiName].memory.push({state, action: col, reward, nextState: [...board.flat()], done});
                 if (AIs[aiName].memory.length > MEMORY_SIZE) AIs[aiName].memory.shift();
@@ -243,7 +239,7 @@ async function handleMove(col) {
         if (checkWinner(board, 1)) { document.getElementById('status').innerText = "Tu as battu l'IA-A !"; return; }
 
         document.getElementById('status').innerText = "L'IA-A réfléchit...";
-        await new Promise(r => setTimeout(r, 50)); // Réflexion très rapide avec un bon CPU
+        await new Promise(r => setTimeout(r, 50)); 
 
         let aiCol = getBestMove(board, 'A', 0); 
         if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
@@ -257,6 +253,7 @@ async function handleMove(col) {
     }
 }
 
+// 8. FONCTION DE RÉCOMPENSE AVANCÉE (Reward Shaping)
 function calculateReward(board, lastAction, currentPlayer, isWin, isDraw) {
     // 1. Les fins de parties priment sur tout
     if (isWin) return 100;
@@ -266,29 +263,25 @@ function calculateReward(board, lastAction, currentPlayer, isWin, isDraw) {
     const opponent = (currentPlayer === 1) ? 2 : 1;
 
     // 2. Micro-récompense stratégique : jouer au centre
-    // (En supposant que les colonnes vont de 0 à 6, le centre est 3)
     if (lastAction === 3) {
         reward += 2; 
     } else if (lastAction === 2 || lastAction === 4) {
-        reward += 1; // Un peu moins bien, mais stratégique quand même
+        reward += 1; 
     }
 
-    // 3. Récompenses d'Analyse (Nécessite des fonctions d'analyse du plateau)
-    
-    // Si ce coup a empêché l'adversaire d'aligner 4 jetons
+    // 3. Récompenses d'Analyse
     if (didBlockOpponentWin(board, lastAction, opponent)) {
-        reward += 50;
+        reward += 50; // Bloquer une défaite imminente
     }
     
-    // Si ce coup a créé une ligne de 3 pour nous (avec possibilité de faire 4)
     if (createdLineOfThree(board, lastAction, currentPlayer)) {
-        reward += 10;
+        reward += 10; // Créer une opportunité
     }
 
     return reward;
 }
 
-// FONCTIONS STANDARDS
+// FONCTIONS STANDARDS ET UTILITAIRES D'ANALYSE
 function dropToken(g, c, p) {
     if (c < 0 || c >= COLS || g[0][c] !== 0) return false;
     for (let r = ROWS - 1; r >= 0; r--) { if (g[r][c] === 0) { g[r][c] = p; return true; } }
@@ -301,6 +294,48 @@ function checkWinner(g, p) {
     for (let r=3; r<6; r++) for (let c=0; c<4; c++) if (g[r][c]===p && g[r-1][c+1]===p && g[r-2][c+2]===p && g[r-3][c+3]===p) return true;
     for (let r=0; r<3; r++) for (let c=0; c<4; c++) if (g[r][c]===p && g[r+1][c+1]===p && g[r+2][c+2]===p && g[r+3][c+3]===p) return true;
     return false;
+}
+
+function didBlockOpponentWin(g, col, opponent) {
+    let r = 0;
+    while (r < ROWS && g[r][col] === 0) r++;
+    if (r === ROWS) return false; 
+
+    const originalColor = g[r][col];
+    g[r][col] = opponent; // Test fictif pour l'adversaire
+    
+    const blocked = checkWinner(g, opponent);
+    
+    g[r][col] = originalColor; // Restauration
+    return blocked;
+}
+
+function createdLineOfThree(g, col, player) {
+    let r = 0;
+    while (r < ROWS && g[r][col] === 0) r++;
+    if (r === ROWS) return false;
+
+    let linesOfThree = 0;
+
+    const checkWindow = (r1, c1, r2, c2, r3, c3, r4, c4) => {
+        if (r1<0 || r1>=ROWS || c1<0 || c1>=COLS ||
+            r4<0 || r4>=ROWS || c4<0 || c4>=COLS) return;
+
+        const window = [g[r1][c1], g[r2][c2], g[r3][c3], g[r4][c4]];
+        const playerCount = window.filter(v => v === player).length;
+        const emptyCount = window.filter(v => v === 0).length;
+
+        if (playerCount === 3 && emptyCount === 1) linesOfThree++;
+    };
+
+    for (let i = 0; i < 4; i++) {
+        checkWindow(r, col-3+i, r, col-2+i, r, col-1+i, r, col+i);
+        checkWindow(r+i, col, r+1+i, col, r+2+i, col, r+3+i, col);
+        checkWindow(r-3+i, col-3+i, r-2+i, col-2+i, r-1+i, col-1+i, r+i, col+i);
+        checkWindow(r-3+i, col+3-i, r-2+i, col+2-i, r-1+i, col+1-i, r+i, col-i);
+    }
+
+    return linesOfThree > 0;
 }
 
 // BINDING DES BOUTONS
