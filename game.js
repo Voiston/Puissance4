@@ -123,7 +123,7 @@ function saveMemory(aiName, state, action, reward, nextState, done, clones = 1) 
 }
 
 // 🌟 NOUVEAU : ENTRAÎNEMENT AVEC DOUBLE DQN 🌟
-async function trainBatch(aiName, size = 512) {
+async function trainBatch(aiName, size = 256) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
@@ -199,7 +199,7 @@ async function runTraining(aiName) {
             } else break;
         }
 
-        await trainBatch(aiName, 512); 
+        await trainBatch(aiName, 256); 
 
         if (gamesPlayed % 10 === 0) {
             statusText.innerText = `Entraînement IA-${aiName} : ${gamesPlayed} parties jouées (Clique pour stopper)`;
