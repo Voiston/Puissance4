@@ -219,86 +219,100 @@ async function runTraining(aiName) {
     initBoard(); renderBoard();
 }
 
-// 6. L'ARÈNE ÉVOLUTIVE (Combat avec apprentissage)
+let stopArenaRequested = false; // Flag pour arrêter proprement
+
 async function runArena() {
     if (isTraining || isArena || isProcessingMove) return;
     isArena = true;
-    initBoard(); renderBoard();
+    stopArenaRequested = false;
     
-    document.getElementById('status').innerText = "⚔️ COMBAT ÉVOLUTIF : IA-A vs IA-B ⚔️";
-    await new Promise(r => setTimeout(r, 1000));
+    let totalGames = 0;
+    const statusText = document.getElementById('status');
 
-    let turn = 1; 
-    let history = []; // On stocke le film du match pour l'analyser à la fin
+    while (!stopArenaRequested) {
+        // --- ÉTAPE 1 : JOUER UNE PARTIE SANS DÉLAI ---
+        initBoard(); 
+        let turn = (Math.random() < 0.5) ? 1 : 2; 
+        let history = [];
+        let gameDone = false;
 
-    while (true) {
-        let activeAI = turn === 1 ? 'A' : 'B';
-        let opponentAI = turn === 1 ? 'B' : 'A';
-        
-        let stateBefore = [...board.flat()];
-        let col = getBestMove(board, activeAI, 0.05); // Petit Epsilon (5%) pour varier les matchs
-        
-        if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
-        
-        if (col === undefined) {
-            document.getElementById('status').innerText = "Match Nul !";
-            break;
+        while (!gameDone) {
+            let activeAI = turn === 1 ? 'A' : 'B';
+            let opponentAI = turn === 1 ? 'B' : 'A';
+            let stateBefore = [...board.flat()];
+
+            // On garde 5% d'epsilon pour éviter la stagnation (l'IA qui fait toujours le même match)
+            let col = getBestMove(board, activeAI, 0.05); 
+            if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
+
+            if (col === undefined) break; // Match nul technique
+
+            if (dropToken(board, col, turn)) {
+                let win = checkWinner(board, turn);
+                let draw = board.flat().every(v => v !== 0);
+                gameDone = win || draw;
+
+                history.push({
+                    aiName: activeAI,
+                    opponentAI: opponentAI,
+                    state: stateBefore,
+                    action: col,
+                    nextState: [...board.flat()],
+                    done: gameDone,
+                    win: win
+                });
+
+                if (gameDone) {
+                    // --- PHASE D'APPRENTISSAGE ---
+                    if (win) {
+                        // Récompense vainqueur
+                        let winMove = history[history.length - 1];
+                        saveMemory(activeAI, winMove.state, winMove.action, 100, winMove.nextState, true, 5);
+                        // Punition perdant
+                        if (history.length >= 2) {
+                            let loseMove = history[history.length - 2];
+                            saveMemory(opponentAI, loseMove.state, loseMove.action, -100, loseMove.nextState, true, 5);
+                        }
+                    } else {
+                        // Bonus neutre pour le nul
+                        let lastMove = history[history.length - 1];
+                        saveMemory(activeAI, lastMove.state, lastMove.action, 2, lastMove.nextState, true, 2);
+                    }
+                }
+                turn = (turn === 1) ? 2 : 1;
+            } else break;
         }
 
-        if (dropToken(board, col, turn)) {
-            renderBoard();
+        totalGames++;
+
+        // --- ÉTAPE 2 : ENTRAÎNEMENT & RENDU (Toutes les X parties) ---
+        // On n'affiche pas tout pour gagner du temps, mais on entraîne souvent
+        if (totalGames % 5 === 0) {
+            statusText.innerText = `⚔️ Arène : ${totalGames} matchs. Apprentissage en cours...`;
             
-            let win = checkWinner(board, turn);
-            let draw = board.flat().every(v => v !== 0);
-            let done = win || draw;
+            // On entraîne les deux IA
+            await trainBatch('A', 128); 
+            await trainBatch('B', 128);
+            
+            // On laisse le thread UI respirer un instant
+            renderBoard(); 
+            await tf.nextFrame(); 
+        }
 
-            // On note le mouvement dans l'historique du match
-            history.push({
-                aiName: activeAI,
-                state: stateBefore,
-                action: col,
-                nextState: [...board.flat()],
-                done: done
-            });
-
-            if (done) {
-                // --- PHASE D'APPRENTISSAGE POST-MATCH ---
-                if (win) {
-                    document.getElementById('status').innerText = `🏆 L'IA-${activeAI} gagne et apprend !`;
-                    
-                    // 1. On récompense le vainqueur (Poids faible : x5 -> x10 avec symétrie)
-                    let winnerMove = history[history.length - 1];
-                    saveMemory(activeAI, winnerMove.state, winnerMove.action, 100, winnerMove.nextState, true, 5);
-                    
-                    // 2. On punit le perdant (Poids faible : x5 -> x10 avec symétrie)
-                    // Le perdant est celui qui a joué juste avant le dernier coup
-                    if (history.length >= 2) {
-                        let loserMove = history[history.length - 2];
-                        saveMemory(opponentAI, loserMove.state, loserMove.action, -100, loserMove.nextState, true, 5);
-                    }
-                } else {
-                    document.getElementById('status').innerText = "Égalité !";
-                }
-
-                // 3. On lance un micro-entraînement pour les deux
-                await trainBatch('A', 128);
-                await trainBatch('B', 128);
-                
-                // 4. On synchronise et on sauvegarde
-                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
-                AIs['B'].target.setWeights(AIs['B'].model.getWeights());
-                await AIs['A'].model.save(AIs['A'].storage);
-                await AIs['B'].model.save(AIs['B'].storage);
-                
-                break;
-            }
-
-            turn = (turn === 1) ? 2 : 1;
-            await new Promise(r => setTimeout(r, 100)); // Vitesse de l'arène
-        } else break;
+        // --- ÉTAPE 3 : SAUVEGARDE LOURDE (Tous les 50 matchs) ---
+        if (totalGames % 50 === 0) {
+            AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+            AIs['B'].target.setWeights(AIs['B'].model.getWeights());
+            await AIs['A'].model.save(AIs['A'].storage);
+            await AIs['B'].model.save(AIs['B'].storage);
+            console.log(`💾 Checkpoint : ${totalGames} parties sauvegardées.`);
+        }
     }
+
     isArena = false;
+    statusText.innerText = `Arène stoppée. Total : ${totalGames} matchs.`;
 }
+
 
 // 7. JOUER MANUELLEMENT (Avec Lock, Symétrie et Double DQN)
 async function handleMove(col) {
