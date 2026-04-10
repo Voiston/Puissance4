@@ -35,41 +35,59 @@ function renderBoard() {
     gridEl.appendChild(fragment);
 }
 
-// 2. CRÉATION DES DEUX CERVEAUX (Réseau Profond pour PC)
+// 2. CRÉATION DES DEUX CERVEAUX (Corrigé pour le rechargement)
 async function initIA() {
-    const createModel = () => {
-        const m = tf.sequential();
-        m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        
-        // 3 Couches convolutives robustes pour repérer les patterns spatiaux
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
-        
-        m.add(tf.layers.flatten());
-        
-        // Couches denses massives pour la logique de décision
-        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 128, activation: 'relu'}));
-        
-        // Sortie : 7 colonnes possibles
-        m.add(tf.layers.dense({units: 7, activation: 'linear'}));
-        
-        // Learning rate légèrement baissé pour la stabilité du réseau profond
+    // On extrait la compilation dans une fonction à part pour pouvoir la réutiliser
+    const compileModel = (m) => {
         m.compile({optimizer: tf.train.adam(0.00025), loss: 'meanSquaredError'});
         return m;
     };
 
-    try { AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); AIs['A'].target = await tf.loadLayersModel(AIs['A'].storage); }
-    catch (e) { AIs['A'].model = createModel(); AIs['A'].target = createModel(); }
+    const createModel = () => {
+        const m = tf.sequential();
+        m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.flatten());
+        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
+        m.add(tf.layers.dense({units: 128, activation: 'relu'}));
+        m.add(tf.layers.dense({units: 7, activation: 'linear'}));
+        
+        return compileModel(m); // On compile le nouveau modèle
+    };
 
-    try { AIs['B'].model = await tf.loadLayersModel(AIs['B'].storage); AIs['B'].target = await tf.loadLayersModel(AIs['B'].storage); }
-    catch (e) { AIs['B'].model = createModel(); AIs['B'].target = createModel(); }
+    // Charger ou créer IA-A
+    try { 
+        AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); 
+        AIs['A'].target = await tf.loadLayersModel(AIs['A'].storage); 
+        
+        // CORRECTION ICI : On recompile les modèles qu'on vient de charger !
+        compileModel(AIs['A'].model);
+        compileModel(AIs['A'].target);
+    }
+    catch (e) { 
+        AIs['A'].model = createModel(); 
+        AIs['A'].target = createModel(); 
+    }
+
+    // Charger ou créer IA-B
+    try { 
+        AIs['B'].model = await tf.loadLayersModel(AIs['B'].storage); 
+        AIs['B'].target = await tf.loadLayersModel(AIs['B'].storage); 
+        
+        // CORRECTION ICI : On recompile aussi pour B
+        compileModel(AIs['B'].model);
+        compileModel(AIs['B'].target);
+    }
+    catch (e) { 
+        AIs['B'].model = createModel(); 
+        AIs['B'].target = createModel(); 
+    }
 
     document.getElementById('ia-status').innerText = "IA A et B prêtes (Mode Haute Performance)";
     renderBoard();
 }
-
 // 3. PRÉDICTION SÉCURISÉE
 function getBestMove(grid, aiName, epsilon = 0) {
     if (Math.random() < epsilon) {
