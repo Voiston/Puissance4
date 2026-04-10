@@ -242,24 +242,58 @@ async function runArena() {
     isArena = false;
 }
 
-// 7. JOUER MANUELLEMENT CONTRE IA-A
+// 7. JOUER MANUELLEMENT CONTRE IA-A (Maintenant avec apprentissage en direct !)
 async function handleMove(col) {
     if (isTraining || isArena || board[0][col] !== 0) return;
 
+    // --- TOUR DU JOUEUR (Toi) ---
     if (dropToken(board, col, 1)) { 
         renderBoard();
-        if (checkWinner(board, 1)) { document.getElementById('status').innerText = "Tu as battu l'IA-A !"; return; }
+        let humanWon = checkWinner(board, 1);
+        let isDraw = board.flat().every(v => v !== 0);
+
+        if (humanWon || isDraw) { 
+            document.getElementById('status').innerText = humanWon ? "Tu as battu l'IA-A !" : "Nul !"; 
+            return; 
+        }
 
         document.getElementById('status').innerText = "L'IA-A réfléchit...";
         await new Promise(r => setTimeout(r, 50)); 
 
+        // --- TOUR DE L'IA ---
+        let stateBeforeAI = [...board.flat()]; // L'IA mémorise le plateau AVANT de jouer
+        
         let aiCol = getBestMove(board, 'A', 0); 
         if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
 
         if (aiCol !== undefined && dropToken(board, aiCol, 2)) { 
             renderBoard();
-            if (checkWinner(board, 2)) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
-            else if (board.flat().every(v => v !== 0)) document.getElementById('status').innerText = "Nul !";
+            
+            let aiWon = checkWinner(board, 2);
+            let aiDraw = board.flat().every(v => v !== 0);
+            let done = aiWon || aiDraw;
+
+            // 🧠 1. L'IA CALCULE SA RÉCOMPENSE
+            let reward = calculateReward(board, aiCol, 2, aiWon, aiDraw);
+
+            // 📝 2. ELLE PREND DES NOTES DANS SA MÉMOIRE
+            AIs['A'].memory.push({
+                state: stateBeforeAI, 
+                action: aiCol, 
+                reward: reward, 
+                nextState: [...board.flat()], 
+                done: done
+            });
+
+            // On s'assure que la mémoire ne déborde pas
+            if (AIs['A'].memory.length > MEMORY_SIZE) AIs['A'].memory.shift();
+
+            // 🏋️ 3. ELLE S'ENTRAÎNE FURTIVEMENT EN ARRIÈRE-PLAN
+            // On lance un petit batch de 128 souvenirs pour ajuster ses neurones immédiatement
+            trainBatch('A', 128);
+
+            if (aiWon) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
+            else if (aiDraw) document.getElementById('status').innerText = "Nul !";
             else document.getElementById('status').innerText = "À toi.";
         }
     }
