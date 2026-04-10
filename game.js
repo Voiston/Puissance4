@@ -257,6 +257,37 @@ async function handleMove(col) {
     }
 }
 
+function calculateReward(board, lastAction, currentPlayer, isWin, isDraw) {
+    // 1. Les fins de parties priment sur tout
+    if (isWin) return 100;
+    if (isDraw) return 2;
+
+    let reward = 0;
+    const opponent = (currentPlayer === 1) ? 2 : 1;
+
+    // 2. Micro-récompense stratégique : jouer au centre
+    // (En supposant que les colonnes vont de 0 à 6, le centre est 3)
+    if (lastAction === 3) {
+        reward += 2; 
+    } else if (lastAction === 2 || lastAction === 4) {
+        reward += 1; // Un peu moins bien, mais stratégique quand même
+    }
+
+    // 3. Récompenses d'Analyse (Nécessite des fonctions d'analyse du plateau)
+    
+    // Si ce coup a empêché l'adversaire d'aligner 4 jetons
+    if (didBlockOpponentWin(board, lastAction, opponent)) {
+        reward += 50;
+    }
+    
+    // Si ce coup a créé une ligne de 3 pour nous (avec possibilité de faire 4)
+    if (createdLineOfThree(board, lastAction, currentPlayer)) {
+        reward += 10;
+    }
+
+    return reward;
+}
+
 // FONCTIONS STANDARDS
 function dropToken(g, c, p) {
     if (c < 0 || c >= COLS || g[0][c] !== 0) return false;
