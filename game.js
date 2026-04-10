@@ -3,9 +3,9 @@ let board = [];
 let isTraining = false;
 let isArena = false;
 
-// Paramètres DQN
-const GAMMA = 0.96;
-const MEMORY_SIZE = 2000;
+// Paramètres DQN "PC Edition"
+const GAMMA = 0.99; // Vision très long terme
+const MEMORY_SIZE = 50000; // Utilisation de la RAM du PC pour un meilleur historique
 
 // Nos deux gladiateurs
 const AIs = {
@@ -19,9 +19,7 @@ function initBoard() {
 }
 
 function renderBoard() {
-    // Si on s'entraîne, on ne dessine RIEN pour économiser 100% du GPU visuel
-    if (isTraining) return; 
-
+    if (isTraining) return; // Économie totale du GPU pour le calcul pur
     const gridEl = document.getElementById('board');
     if (!gridEl) return;
     gridEl.innerHTML = '';
@@ -30,7 +28,6 @@ function renderBoard() {
         for (let c = 0; c < COLS; c++) {
             const div = document.createElement('div');
             div.className = 'cell' + (board[r][c] === 1 ? ' player' : board[r][c] === 2 ? ' ai' : '');
-            // En mode arène, on bloque les clics humains
             div.onclick = () => { if(!isArena) handleMove(c); };
             fragment.appendChild(div);
         }
@@ -38,29 +35,38 @@ function renderBoard() {
     gridEl.appendChild(fragment);
 }
 
-// 2. CRÉATION DES DEUX CERVEAUX
+// 2. CRÉATION DES DEUX CERVEAUX (Réseau Profond pour PC)
 async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        m.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        
+        // 3 Couches convolutives robustes pour repérer les patterns spatiaux
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        
         m.add(tf.layers.flatten());
-        m.add(tf.layers.dense({units: 64, activation: 'relu'}));
+        
+        // Couches denses massives pour la logique de décision
+        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
+        m.add(tf.layers.dense({units: 128, activation: 'relu'}));
+        
+        // Sortie : 7 colonnes possibles
         m.add(tf.layers.dense({units: 7, activation: 'linear'}));
-        m.compile({optimizer: tf.train.adam(0.0005), loss: 'meanSquaredError'});
+        
+        // Learning rate légèrement baissé pour la stabilité du réseau profond
+        m.compile({optimizer: tf.train.adam(0.00025), loss: 'meanSquaredError'});
         return m;
     };
 
-    // Charger ou créer IA-A
     try { AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); AIs['A'].target = await tf.loadLayersModel(AIs['A'].storage); }
     catch (e) { AIs['A'].model = createModel(); AIs['A'].target = createModel(); }
 
-    // Charger ou créer IA-B
     try { AIs['B'].model = await tf.loadLayersModel(AIs['B'].storage); AIs['B'].target = await tf.loadLayersModel(AIs['B'].storage); }
     catch (e) { AIs['B'].model = createModel(); AIs['B'].target = createModel(); }
 
-    document.getElementById('ia-status').innerText = "IA A et B prêtes";
+    document.getElementById('ia-status').innerText = "IA A et B prêtes (Mode Haute Performance)";
     renderBoard();
 }
 
@@ -78,8 +84,8 @@ function getBestMove(grid, aiName, epsilon = 0) {
     });
 }
 
-// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE
-async function trainBatch(aiName, size = 32) {
+// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE (Batch Size augmenté)
+async function trainBatch(aiName, size = 128) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
@@ -110,13 +116,15 @@ async function trainBatch(aiName, size = 32) {
 async function runTraining(aiName) {
     if (isTraining || isArena) return;
     isTraining = true;
-    const batchSize = 150; 
+    const batchSize = 500; // Plus de parties par session d'entraînement
     const statusText = document.getElementById('status');
 
     for (let i = 1; i <= batchSize; i++) {
         initBoard();
-        let turn = (Math.random() < 0.5) ? 1 : 2; // Elle joue les deux rôles contre elle-même
-        let epsilon = Math.max(0.1, 0.4 - (i / batchSize));
+        let turn = (Math.random() < 0.5) ? 1 : 2; 
+        
+        // Descente d'Epsilon plus douce pour encourager l'exploration sur le long terme
+        let epsilon = Math.max(0.05, 0.5 - (i / batchSize));
 
         while (true) {
             let state = [...board.flat()];
@@ -129,8 +137,8 @@ async function runTraining(aiName) {
                 let win = checkWinner(board, turn);
                 let done = win || board.flat().every(v => v !== 0);
                 
-                let reward = win ? 20 : 0.05; // On ne punit pas l'autre rôle car c'est la même IA
-                if(done && !win) reward = 2; // Match nul = un peu positif
+                let reward = win ? 20 : 0.05; 
+                if(done && !win) reward = 2; 
 
                 AIs[aiName].memory.push({state, action: col, reward, nextState: [...board.flat()], done});
                 if (AIs[aiName].memory.length > MEMORY_SIZE) AIs[aiName].memory.shift();
@@ -140,15 +148,14 @@ async function runTraining(aiName) {
             } else break;
         }
 
-        await trainBatch(aiName, 32);
+        await trainBatch(aiName, 128); // On entraîne avec de plus gros paquets de données
 
-        // MISE À JOUR DU TEXTE UNIQUEMENT (Pas de rendu de grille)
         statusText.innerText = `Entraînement IA-${aiName} : ${i} / ${batchSize}`;
 
-        if (i % 10 === 0) {
+        if (i % 20 === 0) {
             AIs[aiName].target.setWeights(AIs[aiName].model.getWeights());
-            // Pause vitale pour laisser la RAM se purger
-            await new Promise(r => setTimeout(r, 50));
+            // Libère le thread du navigateur pour éviter les crashs sur PC
+            await tf.nextFrame(); 
         }
     }
 
@@ -167,11 +174,11 @@ async function runArena() {
     document.getElementById('status').innerText = "⚔️ COMBAT : IA-A (Rouge) vs IA-B (Jaune) ⚔️";
     await new Promise(r => setTimeout(r, 1000));
 
-    let turn = 1; // IA-A commence toujours (Rouge)
+    let turn = 1; 
     
     while (true) {
         let activeAI = turn === 1 ? 'A' : 'B';
-        let col = getBestMove(board, activeAI, 0); // Epsilon 0 = Sérieux absolu
+        let col = getBestMove(board, activeAI, 0); 
         
         if (board[0][col] !== 0) col = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
         if (col === undefined) {
@@ -181,7 +188,7 @@ async function runArena() {
 
         if (dropToken(board, col, turn)) {
             renderBoard();
-            await new Promise(r => setTimeout(r, 250)); // On ralentit pour que tu puisses regarder
+            await new Promise(r => setTimeout(r, 300)); 
 
             if (checkWinner(board, turn)) {
                 document.getElementById('status').innerText = `🏆 L'IA-${activeAI} a terrassé son adversaire !`;
@@ -201,17 +208,17 @@ async function runArena() {
 async function handleMove(col) {
     if (isTraining || isArena || board[0][col] !== 0) return;
 
-    if (dropToken(board, col, 1)) { // Humain = Rouge
+    if (dropToken(board, col, 1)) { 
         renderBoard();
         if (checkWinner(board, 1)) { document.getElementById('status').innerText = "Tu as battu l'IA-A !"; return; }
 
         document.getElementById('status').innerText = "L'IA-A réfléchit...";
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 50)); // Réflexion très rapide avec un bon CPU
 
-        let aiCol = getBestMove(board, 'A', 0); // On joue contre l'IA A
+        let aiCol = getBestMove(board, 'A', 0); 
         if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
 
-        if (aiCol !== undefined && dropToken(board, aiCol, 2)) { // IA = Jaune
+        if (aiCol !== undefined && dropToken(board, aiCol, 2)) { 
             renderBoard();
             if (checkWinner(board, 2)) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
             else if (board.flat().every(v => v !== 0)) document.getElementById('status').innerText = "Nul !";
