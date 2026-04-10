@@ -102,15 +102,18 @@ function getBestMove(grid, aiName, epsilon = 0) {
     });
 }
 
-// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE (Batch Size augmenté)
+// 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE (Corrigé pour l'asynchronisme)
 async function trainBatch(aiName, size = 128) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
-    tf.tidy(() => {
-        const batch = [];
-        for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
-        
+    // 1. On prépare notre lot d'exemples aléatoires
+    const batch = [];
+    for(let i=0; i<size; i++) batch.push(memory[Math.floor(Math.random() * memory.length)]);
+
+    // 2. On utilise tf.tidy pour calculer nos valeurs sans fuite de mémoire.
+    // On extrait les variables "x" (états) et "y" (récompenses) pour les sortir du tidy.
+    const { x, y } = tf.tidy(() => {
         const states = tf.tensor2d(batch.map(m => m.state));
         const nextStates = tf.tensor2d(batch.map(m => m.nextState));
         
@@ -126,8 +129,17 @@ async function trainBatch(aiName, size = 128) {
             qValues[i][m.action] = target;
         });
 
-        AIs[aiName].model.fit(states, tf.tensor2d(qValues), {epochs: 1, silent: true});
+        // En retournant ces tenseurs, on indique à tf.tidy de NE PAS les détruire
+        // (Il détruira par contre currentQ, nextQ, nextStates, etc.)
+        return { x: states, y: tf.tensor2d(qValues) };
     });
+
+    // 3. On attend PROPREMENT la fin de l'entraînement en dehors du tf.tidy
+    await AIs[aiName].model.fit(x, y, {epochs: 1, silent: true});
+
+    // 4. On nettoie manuellement x et y maintenant que fit() a terminé son travail
+    x.dispose();
+    y.dispose();
 }
 
 // 5. BOUCLE D'ENTRAÎNEMENT INVISIBLE (Le mode Béton)
