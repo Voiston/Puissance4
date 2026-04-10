@@ -123,7 +123,7 @@ function saveMemory(aiName, state, action, reward, nextState, done, clones = 1) 
 }
 
 // 🌟 NOUVEAU : ENTRAÎNEMENT AVEC DOUBLE DQN 🌟
-async function trainBatch(aiName, size = 256) {
+async function trainBatch(aiName, size = 128) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
@@ -199,7 +199,7 @@ async function runTraining(aiName) {
             } else break;
         }
 
-        await trainBatch(aiName, 256); 
+        await trainBatch(aiName, 128); 
 
         if (gamesPlayed % 10 === 0) {
             statusText.innerText = `Entraînement IA-${aiName} : ${gamesPlayed} parties jouées (Clique pour stopper)`;
@@ -281,8 +281,8 @@ async function runArena() {
                 }
 
                 // 3. On lance un micro-entraînement pour les deux
-                await trainBatch('A', 256);
-                await trainBatch('B', 256);
+                await trainBatch('A', 128);
+                await trainBatch('B', 128);
                 
                 // 4. On synchronise et on sauvegarde
                 AIs['A'].target.setWeights(AIs['A'].model.getWeights());
@@ -320,8 +320,8 @@ async function handleMove(col) {
                     // On punit l'IA x25 (qui devient x50 grâce à la symétrie) sur son dernier coup précis
                     saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, -100, lastAITurnContext.nextState, true, 25);
                     
-                    await trainBatch('A', 256);
-                    await trainBatch('A', 256);
+                    await trainBatch('A', 128);
+                    await trainBatch('A', 128);
                     
                     AIs['A'].target.setWeights(AIs['A'].model.getWeights());
                     await AIs['A'].model.save(AIs['A'].storage);
@@ -354,9 +354,9 @@ async function handleMove(col) {
                 // Oversampling de ses parties avec l'humain (clones = 25 -> 50 avec symétrie)
                 saveMemory('A', stateBeforeAI, aiCol, reward, [...board.flat()], done, 25);
 
-                await trainBatch('A', 256);
-                await trainBatch('A', 256);
-                await trainBatch('A', 256);
+                await trainBatch('A', 128);
+                await trainBatch('A', 128);
+                await trainBatch('A', 128);
 
                 if (aiWon) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
                 else if (aiDraw) document.getElementById('status').innerText = "Nul !";
