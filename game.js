@@ -11,9 +11,10 @@ const GAMMA = 0.99;
 const MEMORY_SIZE = 50000; // Taille idéale pour la réactivité face à un humain
 
 // Nos deux gladiateurs (Passage en V2 pour accepter le nouveau cerveau)
+// Nos deux gladiateurs (Passage sur IndexedDB pour faire sauter la limite de 5 Mo)
 const AIs = {
-    'A': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-a-v2' },
-    'B': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-b-v2' }
+    'A': { model: null, target: null, memory: [], storage: 'indexeddb://dqn-ia-a-v2' },
+    'B': { model: null, target: null, memory: [], storage: 'indexeddb://dqn-ia-b-v2' }
 };
 
 // 1. INITIALISATION DU PLATEAU ET RENDU VISUEL
