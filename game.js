@@ -44,18 +44,23 @@ async function initIA() {
         return m;
     };
 
-    const createModel = () => {
-        const m = tf.sequential();
-        m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.flatten());
-        m.add(tf.layers.dense({units: 512, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 7, activation: 'linear'}));
-        return compileModel(m); 
-    };
+   const createModel = () => {
+    const m = tf.sequential();
+    m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
+    
+    // On garde les convolutions (elles sont légères et puissantes pour la vision)
+    m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+    m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
+    
+    m.add(tf.layers.flatten());
+    
+    // C'est ici qu'on réduit drastiquement pour gagner de la place
+    m.add(tf.layers.dense({units: 128, activation: 'relu'})); // Passage de 512 à 128
+    m.add(tf.layers.dense({units: 64, activation: 'relu'}));  // Passage de 256 à 64
+    m.add(tf.layers.dense({units: 7, activation: 'linear'}));
+    
+    return compileModel(m); 
+};
 
     try { 
         AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); 
