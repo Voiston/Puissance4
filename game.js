@@ -6,7 +6,7 @@ let stopTrainingRequested = false; // Nouveau : permet d'arrêter la boucle
 
 // Paramètres DQN "PC Edition"
 const GAMMA = 0.99; // Vision très long terme
-const MEMORY_SIZE = 80000; // Utilisation de la RAM du PC pour un meilleur historique
+const MEMORY_SIZE = 180000; // Utilisation de la RAM du PC pour un meilleur historique
 
 // Nos deux gladiateurs
 const AIs = {
@@ -242,11 +242,11 @@ async function runArena() {
     isArena = false;
 }
 
-// 7. JOUER MANUELLEMENT CONTRE IA-A (Maintenant avec apprentissage en direct !)
+// 7. JOUER MANUELLEMENT CONTRE IA-A (Avec Oversampling Humain)
 async function handleMove(col) {
     if (isTraining || isArena || board[0][col] !== 0) return;
 
-    // --- TOUR DU JOUEUR (Toi) ---
+    // --- TOUR DU JOUEUR ---
     if (dropToken(board, col, 1)) { 
         renderBoard();
         let humanWon = checkWinner(board, 1);
@@ -261,7 +261,7 @@ async function handleMove(col) {
         await new Promise(r => setTimeout(r, 50)); 
 
         // --- TOUR DE L'IA ---
-        let stateBeforeAI = [...board.flat()]; // L'IA mémorise le plateau AVANT de jouer
+        let stateBeforeAI = [...board.flat()]; 
         
         let aiCol = getBestMove(board, 'A', 0); 
         if (board[0][aiCol] !== 0) aiCol = [0,1,2,3,4,5,6].find(c => board[0][c] === 0);
@@ -273,24 +273,32 @@ async function handleMove(col) {
             let aiDraw = board.flat().every(v => v !== 0);
             let done = aiWon || aiDraw;
 
-            // 🧠 1. L'IA CALCULE SA RÉCOMPENSE
             let reward = calculateReward(board, aiCol, 2, aiWon, aiDraw);
 
-            // 📝 2. ELLE PREND DES NOTES DANS SA MÉMOIRE
-            AIs['A'].memory.push({
-                state: stateBeforeAI, 
-                action: aiCol, 
-                reward: reward, 
-                nextState: [...board.flat()], 
-                done: done
-            });
+            // 🌟 L'ASTUCE DU SUR-ÉCHANTILLONNAGE 🌟
+            // On clone cette situation 50 fois dans sa mémoire ! 
+            // C'est comme si on la forçait à réviser cette page précise de son manuel.
+            for(let i = 0; i < 50; i++) {
+                AIs['A'].memory.push({
+                    state: stateBeforeAI, 
+                    action: aiCol, 
+                    reward: reward, 
+                    nextState: [...board.flat()], 
+                    done: done
+                });
+            }
 
-            // On s'assure que la mémoire ne déborde pas
-            if (AIs['A'].memory.length > MEMORY_SIZE) AIs['A'].memory.shift();
+            // Nettoyage si on dépasse la taille max
+            while(AIs['A'].memory.length > MEMORY_SIZE) {
+                AIs['A'].memory.shift();
+            }
 
-            // 🏋️ 3. ELLE S'ENTRAÎNE FURTIVEMENT EN ARRIÈRE-PLAN
-            // On lance un petit batch de 128 souvenirs pour ajuster ses neurones immédiatement
-            trainBatch('A', 128);
+            // 🏋️ ON L'ENTRAÎNE PLUS FORT APRES UN COUP HUMAIN
+            // Au lieu d'un seul batch, on fait 3 sessions intenses 
+            // pour qu'elle intègre le coup immédiatement.
+            await trainBatch('A', 256);
+            await trainBatch('A', 256);
+            await trainBatch('A', 256);
 
             if (aiWon) document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
             else if (aiDraw) document.getElementById('status').innerText = "Nul !";
