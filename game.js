@@ -47,12 +47,12 @@ async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 256, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 256, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 256, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.flatten());
+        m.add(tf.layers.dense({units: 1024, activation: 'relu'}));
         m.add(tf.layers.dense({units: 512, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 256, activation: 'relu'}));
         m.add(tf.layers.dense({units: 7, activation: 'linear'}));
         
         return compileModel(m); // On compile le nouveau modèle
@@ -103,7 +103,7 @@ function getBestMove(grid, aiName, epsilon = 0) {
 }
 
 // 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE
-async function trainBatch(aiName, size = 512) {
+async function trainBatch(aiName, size = 1024) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
@@ -179,7 +179,7 @@ async function runTraining(aiName) {
         }
 
         // On entraîne le réseau
-        await trainBatch(aiName, 512); 
+        await trainBatch(aiName, 1024); 
 
         // Mise à jour de l'affichage toutes les 10 parties pour ne pas saturer l'écran
         if (gamesPlayed % 10 === 0) {
