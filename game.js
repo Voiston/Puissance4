@@ -46,12 +46,12 @@ async function initIA() {
     const createModel = () => {
         const m = tf.sequential();
         m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-        m.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 125, kernelSize: 3, activation: 'relu', padding: 'same'}));
         m.add(tf.layers.flatten());
+        m.add(tf.layers.dense({units: 512, activation: 'relu'}));
         m.add(tf.layers.dense({units: 256, activation: 'relu'}));
-        m.add(tf.layers.dense({units: 128, activation: 'relu'}));
         m.add(tf.layers.dense({units: 7, activation: 'linear'}));
         
         return compileModel(m); // On compile le nouveau modèle
@@ -103,7 +103,7 @@ function getBestMove(grid, aiName, epsilon = 0) {
 }
 
 // 4. ENTRAÎNEMENT D'UNE IA SPÉCIFIQUE (Corrigé pour l'asynchronisme)
-async function trainBatch(aiName, size = 128) {
+async function trainBatch(aiName, size = 512) {
     const memory = AIs[aiName].memory;
     if (memory.length < size) return;
 
@@ -154,7 +154,7 @@ async function runTraining(aiName) {
         let turn = (Math.random() < 0.5) ? 1 : 2; 
         
         // Descente d'Epsilon plus douce pour encourager l'exploration sur le long terme
-        let epsilon = Math.max(0.05, 0.5 - (i / batchSize));
+        let epsilon = Math.max(0.10, 0.8 - (i / batchSize*0.8));
 
         while (true) {
             let state = [...board.flat()];
@@ -178,11 +178,11 @@ async function runTraining(aiName) {
             } else break;
         }
 
-        await trainBatch(aiName, 128); // On entraîne avec de plus gros paquets de données
+        await trainBatch(aiName, 512); // On entraîne avec de plus gros paquets de données
 
         statusText.innerText = `Entraînement IA-${aiName} : ${i} / ${batchSize}`;
 
-        if (i % 20 === 0) {
+        if (i % 200 === 0) {
             AIs[aiName].target.setWeights(AIs[aiName].model.getWeights());
             // Libère le thread du navigateur pour éviter les crashs sur PC
             await tf.nextFrame(); 
