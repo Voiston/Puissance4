@@ -2,6 +2,7 @@ const ROWS = 6, COLS = 7;
 let board = [];
 let isTraining = false;
 let isArena = false;
+let stopTrainingRequested = false; // Nouveau : permet d'arrêter la boucle
 
 // Paramètres DQN "PC Edition"
 const GAMMA = 0.99; // Vision très long terme
@@ -138,19 +139,23 @@ async function trainBatch(aiName, size = 512) {
     y.dispose();
 }
 
-// 5. BOUCLE D'ENTRAÎNEMENT INVISIBLE (Le mode Béton)
 async function runTraining(aiName) {
     if (isTraining || isArena) return;
     isTraining = true;
-    const batchSize = 5000; // Plus de parties par session d'entraînement
+    stopTrainingRequested = false; // On réinitialise la demande d'arrêt
+    
+    let gamesPlayed = 0; // On compte les parties au lieu d'avoir un nombre fixe
     const statusText = document.getElementById('status');
+    statusText.innerText = `Entraînement IA-${aiName} démarré...`;
 
-    for (let i = 1; i <= batchSize; i++) {
+    // Boucle infinie, qui s'arrête si on passe stopTrainingRequested à true
+    while (!stopTrainingRequested) {
+        gamesPlayed++;
         initBoard();
         let turn = (Math.random() < 0.5) ? 1 : 2; 
         
-        // Descente d'Epsilon plus douce pour encourager l'exploration sur le long terme
-        let epsilon = Math.max(0.10, 0.8 - (i / (batchSize * 0.8)));
+        // Epsilon diminue en continu, mais se bloque à 10% d'exploration minimum
+        let epsilon = Math.max(0.10, 0.8 - (gamesPlayed / 10000));
 
         while (true) {
             let state = [...board.flat()];
@@ -163,7 +168,6 @@ async function runTraining(aiName) {
                 let win = checkWinner(board, turn);
                 let done = win || board.flat().every(v => v !== 0);
                 
-                // NOUVEAU SYSTÈME DE RÉCOMPENSE INTÉGRÉ
                 let reward = calculateReward(board, col, turn, win, done && !win);
 
                 AIs[aiName].memory.push({state, action: col, reward, nextState: [...board.flat()], done});
@@ -174,23 +178,31 @@ async function runTraining(aiName) {
             } else break;
         }
 
-        await trainBatch(aiName, 512); // On entraîne avec de plus gros paquets de données
+        // On entraîne le réseau
+        await trainBatch(aiName, 512); 
 
-        statusText.innerText = `Entraînement IA-${aiName} : ${i} / ${batchSize}`;
-
-        if (i % 200 === 0) {
-            AIs[aiName].target.setWeights(AIs[aiName].model.getWeights());
-            // Libère le thread du navigateur pour éviter les crashs sur PC
-            await tf.nextFrame(); 
+        // Mise à jour de l'affichage toutes les 10 parties pour ne pas saturer l'écran
+        if (gamesPlayed % 10 === 0) {
+            statusText.innerText = `Entraînement IA-${aiName} : ${gamesPlayed} parties jouées (Clique sur ton bouton pour stopper)`;
         }
+
+        // Toutes les 200 parties : stabilité et SAUVEGARDE AUTO
+        if (gamesPlayed % 200 === 0) {
+            AIs[aiName].target.setWeights(AIs[aiName].model.getWeights());
+            await AIs[aiName].model.save(AIs[aiName].storage); // Sauvegarde en arrière-plan !
+        }
+        
+        // CRUCIAL : Laisse le navigateur respirer 1 milliseconde pour éviter le crash
+        // et permettre d'écouter le clic sur le bouton Stop.
+        await tf.nextFrame(); 
     }
 
+    // -- FIN DE L'ENTRAÎNEMENT (Quand on a cliqué sur Stop) --
     await AIs[aiName].model.save(AIs[aiName].storage);
     isTraining = false;
-    statusText.innerText = `IA-${aiName} optimisée et sauvegardée !`;
+    statusText.innerText = `Entraînement stoppé ! IA-${aiName} optimisée sur ${gamesPlayed} parties.`;
     initBoard(); renderBoard();
 }
-
 // 6. LE COMBAT DES TITANS (IA-A vs IA-B)
 async function runArena() {
     if (isTraining || isArena) return;
@@ -339,9 +351,30 @@ function createdLineOfThree(g, col, player) {
 }
 
 // BINDING DES BOUTONS
-document.getElementById('btn-reset').onclick = () => { isArena = false; isTraining = false; initBoard(); renderBoard(); document.getElementById('status').innerText = "À toi vs IA-A."; };
-document.getElementById('btn-train-a').onclick = () => runTraining('A');
-document.getElementById('btn-train-b').onclick = () => runTraining('B');
+document.getElementById('btn-reset').onclick = () => { 
+    isArena = false; stopTrainingRequested = true; 
+    initBoard(); renderBoard(); 
+    document.getElementById('status').innerText = "À toi vs IA-A."; 
+};
+
+// Fonction pour gérer le toggle Start/Stop
+function toggleTraining(aiName, btnId, originalText) {
+    const btn = document.getElementById(btnId);
+    if (isTraining && !stopTrainingRequested) {
+        // Si ça tourne, on demande l'arrêt
+        stopTrainingRequested = true;
+        btn.innerText = "Arrêt en cours...";
+    } else if (!isTraining) {
+        // Si c'est à l'arrêt, on lance
+        btn.innerText = `🛑 Stopper l'IA-${aiName}`;
+        runTraining(aiName).then(() => {
+            btn.innerText = originalText; // On remet le texte normal à la fin
+        });
+    }
+}
+
+document.getElementById('btn-train-a').onclick = () => toggleTraining('A', 'btn-train-a', "Entraîner IA-A");
+document.getElementById('btn-train-b').onclick = () => toggleTraining('B', 'btn-train-b', "Entraîner IA-B");
 document.getElementById('btn-arena').onclick = () => runArena();
 
 // Lancement au chargement
