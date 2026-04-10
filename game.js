@@ -8,7 +8,7 @@ let lastAITurnContext = null; // Permet de punir l'IA avec précision
 
 // Paramètres DQN
 const GAMMA = 0.99; 
-const MEMORY_SIZE = 60000; // Taille idéale pour la réactivité face à un humain
+const MEMORY_SIZE = 50000; // Taille idéale pour la réactivité face à un humain
 
 const AIs = {
     'A': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-a' },
