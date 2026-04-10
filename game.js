@@ -5,7 +5,7 @@ let isArena = false;
 
 // Paramètres DQN "PC Edition"
 const GAMMA = 0.99; // Vision très long terme
-const MEMORY_SIZE = 50000; // Utilisation de la RAM du PC pour un meilleur historique
+const MEMORY_SIZE = 80000; // Utilisation de la RAM du PC pour un meilleur historique
 
 // Nos deux gladiateurs
 const AIs = {
@@ -146,7 +146,7 @@ async function trainBatch(aiName, size = 128) {
 async function runTraining(aiName) {
     if (isTraining || isArena) return;
     isTraining = true;
-    const batchSize = 500; // Plus de parties par session d'entraînement
+    const batchSize = 5000; // Plus de parties par session d'entraînement
     const statusText = document.getElementById('status');
 
     for (let i = 1; i <= batchSize; i++) {
