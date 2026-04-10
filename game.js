@@ -10,9 +10,10 @@ let lastAITurnContext = null; // Permet de punir l'IA avec précision
 const GAMMA = 0.99; 
 const MEMORY_SIZE = 50000; // Taille idéale pour la réactivité face à un humain
 
+// Nos deux gladiateurs (Passage en V2 pour accepter le nouveau cerveau)
 const AIs = {
-    'A': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-a' },
-    'B': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-b' }
+    'A': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-a-v2' },
+    'B': { model: null, target: null, memory: [], storage: 'localstorage://dqn-ia-b-v2' }
 };
 
 // 1. INITIALISATION DU PLATEAU ET RENDU VISUEL
@@ -45,22 +46,22 @@ async function initIA() {
     };
 
    const createModel = () => {
-    const m = tf.sequential();
-    m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
-    
-    // On garde les convolutions (elles sont légères et puissantes pour la vision)
-    m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-    m.add(tf.layers.conv2d({filters: 64, kernelSize: 4, activation: 'relu', padding: 'same'}));
-    
-    m.add(tf.layers.flatten());
-    
-    // C'est ici qu'on réduit drastiquement pour gagner de la place
-    m.add(tf.layers.dense({units: 128, activation: 'relu'})); // Passage de 512 à 128
-    m.add(tf.layers.dense({units: 64, activation: 'relu'}));  // Passage de 256 à 64
-    m.add(tf.layers.dense({units: 7, activation: 'linear'}));
-    
-    return compileModel(m); 
-};
+        const m = tf.sequential();
+        m.add(tf.layers.reshape({targetShape: [6, 7, 1], inputShape: [42]}));
+        
+        // On double la capacité de vision spatiale (128 filtres au lieu de 64)
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        m.add(tf.layers.conv2d({filters: 128, kernelSize: 4, activation: 'relu', padding: 'same'}));
+        
+        m.add(tf.layers.flatten());
+        
+        // On redonne de la profondeur à la réflexion stratégique
+        m.add(tf.layers.dense({units: 256, activation: 'relu'})); // 256 au lieu de 128
+        m.add(tf.layers.dense({units: 128, activation: 'relu'})); // 128 au lieu de 64
+        m.add(tf.layers.dense({units: 7, activation: 'linear'}));
+        
+        return compileModel(m); 
+    };
 
     try { 
         AIs['A'].model = await tf.loadLayersModel(AIs['A'].storage); 
@@ -469,6 +470,21 @@ document.getElementById('btn-reset').onclick = () => {
     document.getElementById('status').innerText = "À toi vs IA-A."; 
 };
 
+function toggleArena(btnId, originalText) {
+    const btn = document.getElementById(btnId);
+    if (isArena && !stopArenaRequested) {
+        // Si l'arène tourne, on demande l'arrêt
+        stopArenaRequested = true;
+        btn.innerText = "Arrêt de l'arène en cours...";
+    } else if (!isArena && !isTraining) {
+        // Si rien ne tourne, on lance l'arène
+        btn.innerText = "🛑 Stopper l'Arène";
+        runArena().then(() => {
+            btn.innerText = originalText; // On remet le texte normal à la fin
+        });
+    }
+}
+
 function toggleTraining(aiName, btnId, originalText) {
     const btn = document.getElementById(btnId);
     if (isTraining && !stopTrainingRequested) {
@@ -484,7 +500,7 @@ function toggleTraining(aiName, btnId, originalText) {
 
 document.getElementById('btn-train-a').onclick = () => toggleTraining('A', 'btn-train-a', "Entraîner IA-A");
 document.getElementById('btn-train-b').onclick = () => toggleTraining('B', 'btn-train-b', "Entraîner IA-B");
-document.getElementById('btn-arena').onclick = () => runArena();
+document.getElementById('btn-arena').onclick = () => toggleArena('btn-arena', "⚔️ Arène (A vs B)");
 
 // Lancement au chargement
 initBoard(); 
