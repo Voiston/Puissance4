@@ -242,25 +242,49 @@ async function runArena() {
     isArena = false;
 }
 
-// 7. JOUER MANUELLEMENT CONTRE IA-A (Avec Oversampling Humain)
+// 7. JOUER MANUELLEMENT CONTRE IA-A (Avec traumatisme rétroactif)
 async function handleMove(col) {
     if (isTraining || isArena || board[0][col] !== 0) return;
 
-    // --- TOUR DU JOUEUR ---
+    // --- TOUR DU JOUEUR (Toi ou l'autoclicker) ---
     if (dropToken(board, col, 1)) { 
         renderBoard();
         let humanWon = checkWinner(board, 1);
         let isDraw = board.flat().every(v => v !== 0);
 
+        // SI L'HUMAIN GAGNE : ON PUNIT L'IA !
         if (humanWon || isDraw) { 
             document.getElementById('status').innerText = humanWon ? "Tu as battu l'IA-A !" : "Nul !"; 
+            
+            // 💥 LA CORRECTION EST ICI : LA PUNITION DE FIN DE PARTIE 💥
+            if (humanWon && AIs['A'].memory.length > 0) {
+                // L'IA récupère son dernier souvenir (le coup qu'elle a joué juste avant toi)
+                let lastMemory = AIs['A'].memory[AIs['A'].memory.length - 1];
+                
+                // Elle réalise que c'était le coup qui a causé sa perte
+                lastMemory.reward = -100; // Punition ultime !
+                lastMemory.done = true;
+
+                // On sur-échantillonne cette erreur pour ne plus JAMAIS la reproduire (x50)
+                for(let i = 0; i < 50; i++) {
+                    AIs['A'].memory.push({...lastMemory});
+                }
+                
+                // Elle s'entraîne immédiatement sur sa défaite
+                await trainBatch('A', 256);
+                await trainBatch('A', 256);
+                
+                // Elle sauvegarde la leçon pour l'avenir
+                AIs['A'].target.setWeights(AIs['A'].model.getWeights());
+                await AIs['A'].model.save(AIs['A'].storage);
+            }
             return; 
         }
 
         document.getElementById('status').innerText = "L'IA-A réfléchit...";
         await new Promise(r => setTimeout(r, 50)); 
 
-        // --- TOUR DE L'IA ---
+        // --- TOUR DE L'IA (Le reste du code ne change pas) ---
         let stateBeforeAI = [...board.flat()]; 
         
         let aiCol = getBestMove(board, 'A', 0); 
@@ -275,9 +299,7 @@ async function handleMove(col) {
 
             let reward = calculateReward(board, aiCol, 2, aiWon, aiDraw);
 
-            // 🌟 L'ASTUCE DU SUR-ÉCHANTILLONNAGE 🌟
-            // On clone cette situation 50 fois dans sa mémoire ! 
-            // C'est comme si on la forçait à réviser cette page précise de son manuel.
+            // On clone les bonnes actions normales aussi
             for(let i = 0; i < 50; i++) {
                 AIs['A'].memory.push({
                     state: stateBeforeAI, 
@@ -288,19 +310,12 @@ async function handleMove(col) {
                 });
             }
 
-            // Nettoyage si on dépasse la taille max
-            while(AIs['A'].memory.length > MEMORY_SIZE) {
-                AIs['A'].memory.shift();
-            }
+            while(AIs['A'].memory.length > MEMORY_SIZE) AIs['A'].memory.shift();
 
-            // 🏋️ ON L'ENTRAÎNE PLUS FORT APRES UN COUP HUMAIN
-            // Au lieu d'un seul batch, on fait 3 sessions intenses 
-            // pour qu'elle intègre le coup immédiatement.
             await trainBatch('A', 256);
             await trainBatch('A', 256);
             await trainBatch('A', 256);
 
-            // GESTION DE LA FIN DE PARTIE
             if (aiWon) {
                 document.getElementById('status').innerText = "L'IA-A t'a écrasé !";
             } else if (aiDraw) {
@@ -309,12 +324,9 @@ async function handleMove(col) {
                 document.getElementById('status').innerText = "À toi.";
             }
 
-            // 💾 NOUVEAU : SAUVEGARDE ET STABILISATION EN FIN DE PARTIE
             if (done) {
-                // On met à jour le repère de l'IA et on sauvegarde
                 AIs['A'].target.setWeights(AIs['A'].model.getWeights());
                 await AIs['A'].model.save(AIs['A'].storage);
-                console.log("Partie humaine terminée : IA sauvegardée !");
             }
         }
     }
