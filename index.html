@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Neural Lab V4</title>
+    <title>Puissance 4 - Neural Lab V5</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -14,10 +14,10 @@
         <!-- EN-TÊTE -->
         <header class="top-bar">
             <div class="brand">
-                <h1>Neural Arena <span class="badge-v">V4 Lab</span></h1>
+                <h1>Neural Arena <span class="badge-v">V5 Alpha</span></h1>
                 <p id="ia-status">Initialisation de TensorFlow.js...</p>
             </div>
-            <!-- Sélecteur de vitesse global (actif en permanence) -->
+            <!-- Sélecteur de vitesse global -->
             <div class="speed-selector" title="Modifiez la vitesse d'entraînement en direct">
                 <span class="speed-label">⏱️ Vitesse :</span>
                 <div class="speed-buttons">
@@ -42,7 +42,7 @@
             </div>
             <div class="stat-pill">
                 <span class="label">Souvenirs (Replay)</span>
-                <strong id="stat-mem">0 / 50k</strong>
+                <strong id="stat-mem">0.0k / 50k</strong>
             </div>
             <div class="stat-pill">
                 <span class="label">Bilan Arène (A / Nul / B)</span>
@@ -57,7 +57,7 @@
             <button class="tab-btn" data-tab="tab-lab">🎛️ Laboratoire & Courbes</button>
         </nav>
 
-        <!-- BANDEAU DE STATUT & CONTRÔLES D'ENTRAÎNEMENT GLOBAUX -->
+        <!-- BANDEAU D'ACTIONS D'ENTRAÎNEMENT -->
         <div class="action-ribbon">
             <div id="status" class="status-text">Préparation du plateau...</div>
             <div class="training-actions">
@@ -67,13 +67,10 @@
             </div>
         </div>
 
-        <!-- ==========================================
-             ONGLET 1 : PLATEAU DE JEU & JAUGES Q-VALUES
-             ========================================== -->
+        <!-- ONGLET 1 : PLATEAU DE JEU -->
         <main id="tab-game" class="tab-content active">
             <div class="game-layout">
                 <div class="board-column">
-                    <!-- Visualiseur des 7 Q-Values -->
                     <div class="brain-panel">
                         <div class="brain-header">
                             <span>🧠 Confiance par colonne (Q-Values)</span>
@@ -82,16 +79,14 @@
                         <div id="brain-bars" class="brain-grid"></div>
                     </div>
 
-                    <!-- Grille Puissance 4 -->
                     <div class="board-wrapper">
                         <div id="xp-layer"></div>
                         <div id="board" class="grid"></div>
                     </div>
 
-                    <!-- Outils de jeu humain -->
                     <div class="human-toolbar">
                         <button id="btn-reset" class="btn-primary">🔄 Nouvelle Partie</button>
-                        <button id="btn-undo" class="btn-secondary" title="Annuler le dernier échange pour tester un autre coup">⏪ Annuler mon coup</button>
+                        <button id="btn-undo" class="btn-secondary" title="Annuler le dernier échange">⏪ Annuler coup</button>
                         <button id="btn-hint" class="btn-secondary" title="Voir ce que l'IA-A jouerait à votre place">💡 Conseil IA</button>
                         <button id="btn-wipe" class="btn-danger" title="Remettre les réseaux à zéro">🧹 Niveau 0</button>
                     </div>
@@ -99,18 +94,16 @@
             </div>
         </main>
 
-        <!-- ==========================================
-             ONGLET 2 : VISUALISEUR DU RÉSEAU DE NEURONES
-             ========================================== -->
+        <!-- ONGLET 2 : VISUALISEUR DU RÉSEAU DE NEURONES -->
         <section id="tab-network" class="tab-content">
             <div class="network-header">
                 <div>
-                    <h2>Architecture Deep Q-Network en temps réel</h2>
-                    <p>Observez les activations réelles des couches <code>Conv2D (128)</code> et <code>Dense (256 → 128 → 7)</code> à chaque coup joué.</p>
+                    <h2>Architecture Bi-Canal AlphaZero & Double DQN</h2>
+                    <p>Activations en direct des 2 canaux d'entrée <code>[6×7×2]</code>, des filtres <code>Conv2D (3×3)</code> et des couches <code>Dense (256 → 128 → 7)</code>.</p>
                 </div>
                 <div class="network-legend">
-                    <span class="legend-item"><i class="dot pos"></i> Activation forte (+)</span>
-                    <span class="legend-item"><i class="dot neg"></i> Inhibition / Danger (-)</span>
+                    <span class="legend-item"><i class="dot pos"></i> Activation (+)</span>
+                    <span class="legend-item"><i class="dot neg"></i> Danger / Ennemi (-)</span>
                 </div>
             </div>
 
@@ -120,55 +113,51 @@
 
             <div class="Inspector-cards">
                 <div class="info-card">
-                    <h3>👁️ Couches de Vision Spatiale (2× Conv2D 4×4)</h3>
-                    <p>Balayent la grille avec des fenêtres de 4×4 cases pour détecter les alignements horizontaux, verticaux et diagonaux, peu importe leur position.</p>
+                    <h3>👁️ Vision Bi-Canal [6×7×2] & Noyaux 3×3</h3>
+                    <p>Le Canal 0 isole les pions alliés et le Canal 1 isole les pions adverses, évitant toute annulation mathématique dans les filtres convolutifs.</p>
                 </div>
                 <div class="info-card">
-                    <h3>⚖️ Double Cerveau (Modèle Principal + Cible)</h3>
-                    <p>Le réseau principal choisit la meilleure colonne tandis que le réseau cible stabilise l'estimation des récompenses futures ($\gamma = 0.99$).</p>
+                    <h3>♟️ Bellman Negamax & Propagation N-Step</h3>
+                    <p>L'équation soustrait la meilleure riposte adverse ($r - \gamma \max Q$) et propage la victoire ou la défaite sur tous les coups de la partie.</p>
                 </div>
             </div>
         </section>
 
-        <!-- ==========================================
-             ONGLET 3 : LABORATOIRE & COURBES
-             ========================================== -->
+        <!-- ONGLET 3 : LABORATOIRE & COURBES -->
         <section id="tab-lab" class="tab-content">
             <div class="lab-grid">
-                <!-- Courbe d'apprentissage -->
                 <div class="lab-card">
-                    <h3>📈 Courbe de progression (Récompense moyenne par partie)</h3>
-                    <p class="lab-sub">Plus la courbe monte, plus l'IA réalise de parades, d'alignements et de victoires.</p>
+                    <h3>📈 Courbe de progression (Cumul des récompenses par partie)</h3>
+                    <p class="lab-sub">Durant ses 500 premières parties solo, l'IA s'entraîne face au <strong>Bot Professeur (Gardien)</strong> pour apprendre rapidement à défendre.</p>
                     <canvas id="chart-canvas" width="680" height="220"></canvas>
                 </div>
 
-                <!-- Sliders de Reward Shaping -->
                 <div class="lab-card">
-                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping)</h3>
-                    <p class="lab-sub">Ajustez les récompenses données à l'IA pour orienter son style de jeu pendant l'entraînement :</p>
+                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping normalisé)</h3>
+                    <p class="lab-sub">Ajustez les bonus (échelle Huber Loss `-10` à `+10`) pour modifier le comportement de l'IA en direct :</p>
 
                     <div class="slider-group">
                         <label>
                             <span>🛡️ Instinct de survie (Parade décisive)</span>
-                            <strong id="val-reward-block">+50 XP</strong>
+                            <strong id="val-reward-block">+5</strong>
                         </label>
-                        <input type="range" id="slider-block" min="0" max="120" step="5" value="50">
+                        <input type="range" id="slider-block" min="0" max="12" step="0.5" value="5">
                     </div>
 
                     <div class="slider-group">
                         <label>
                             <span>⚡ Agressivité (Aligner 3 pions)</span>
-                            <strong id="val-reward-three">+10 XP</strong>
+                            <strong id="val-reward-three">+1</strong>
                         </label>
-                        <input type="range" id="slider-three" min="0" max="50" step="2" value="10">
+                        <input type="range" id="slider-three" min="0" max="5" step="0.2" value="1">
                     </div>
 
                     <div class="slider-group">
                         <label>
                             <span>🎯 Contrôle du centre (Colonne 4)</span>
-                            <strong id="val-reward-center">+2 XP</strong>
+                            <strong id="val-reward-center">+0.2</strong>
                         </label>
-                        <input type="range" id="slider-center" min="0" max="15" step="1" value="2">
+                        <input type="range" id="slider-center" min="0" max="2" step="0.1" value="0.2">
                     </div>
 
                     <div class="slider-group">
@@ -183,7 +172,6 @@
         </section>
     </div>
 
-    <!-- Chargement modulaire (compatible double-clic local file:// et serveur web) -->
     <script src="engine.js"></script>
     <script src="ai-brain.js"></script>
     <script src="visualizer.js"></script>

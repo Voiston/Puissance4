@@ -27,21 +27,21 @@ class NeuralVisualizer {
             ctx.fillStyle = '#9aa4b8';
             ctx.font = '14px Poppins';
             ctx.textAlign = 'center';
-            ctx.fillText('Jouez un coup ou lancez un entraînement pour voir les neurones s’activer en direct.', W / 2, H / 2);
+            ctx.fillText('Jouez un coup ou lancez un entraînement pour observer les activations en direct.', W / 2, H / 2);
             return;
         }
 
-        const layersX = [85, 250, 410, 555, 695];
-        const titles = ['Entrée (6×7)', 'Conv2D (128)', 'Dense (256)', 'Dense (128)', 'Sortie (7 Col.)'];
+        const layersX = [90, 255, 415, 555, 690];
+        const titles = ['Entrée [6×7×2]', 'Conv2D (3×3)', 'Dense (256)', 'Dense (128)', 'Sortie (7 Col.)'];
 
         // En-têtes des couches
         ctx.font = '600 12px Poppins';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#a4b0be';
-        layersX.forEach((x, idx) => ctx.fillText(titles[idx], x, 24));
+        layersX.forEach((x, idx) => ctx.fillText(titles[idx], x, 22));
 
-        // 1. Calcul des coordonnées des neurones de chaque couche
-        const getLayerNodes = (x, count, topPad = 50, bottomPad = 35) => {
+        // Coordonnées verticales des neurones
+        const getLayerNodes = (x, count, topPad = 48, bottomPad = 32) => {
             const availH = H - topPad - bottomPad;
             const step = availH / Math.max(1, count - 1);
             return Array.from({ length: count }, (_, i) => ({ x, y: topPad + i * step }));
@@ -50,22 +50,22 @@ class NeuralVisualizer {
         const convNodes = getLayerNodes(layersX[1], inspection.convSample.length);
         const d256Nodes = getLayerNodes(layersX[2], inspection.dense256Sample.length);
         const d128Nodes = getLayerNodes(layersX[3], inspection.dense128Sample.length);
-        const outNodes = getLayerNodes(layersX[4], 7, 65, 50);
+        const outNodes = getLayerNodes(layersX[4], 7, 62, 48);
 
-        // 2. Dessin des synapses (connexions entre couches)
+        // 1. Dessin des synapses (connexions pondérées par l'activation)
         const drawSynapses = (nodesA, valsA, nodesB, valsB) => {
             for (let i = 0; i < nodesA.length; i++) {
                 for (let j = 0; j < nodesB.length; j++) {
-                    const strength = Math.min(1, (Math.abs(valsA[i]) + Math.abs(valsB[j])) / 8);
-                    if (strength < 0.06) continue;
+                    const strength = Math.min(1, (Math.abs(valsA[i]) + Math.abs(valsB[j])) / 3.5);
+                    if (strength < 0.08) continue;
                     ctx.beginPath();
                     ctx.moveTo(nodesA[i].x, nodesA[i].y);
                     ctx.lineTo(nodesB[j].x, nodesB[j].y);
                     const isPositive = valsB[j] >= 0;
                     ctx.strokeStyle = isPositive
-                        ? `rgba(46, 213, 115, ${strength * 0.35})`
-                        : `rgba(255, 71, 87, ${strength * 0.35})`;
-                    ctx.lineWidth = 0.6 + strength * 1.4;
+                        ? `rgba(46, 213, 115, ${strength * 0.38})`
+                        : `rgba(255, 71, 87, ${strength * 0.38})`;
+                    ctx.lineWidth = 0.5 + strength * 1.5;
                     ctx.stroke();
                 }
             }
@@ -75,48 +75,60 @@ class NeuralVisualizer {
         drawSynapses(d256Nodes, inspection.dense256Sample, d128Nodes, inspection.dense128Sample);
         drawSynapses(d128Nodes, inspection.dense128Sample, outNodes, inspection.outputs);
 
-        // 3. Dessin de la mini-grille d'entrée 6x7 à gauche
-        const cellSize = 16;
-        const gridStartX = layersX[0] - (7 * cellSize) / 2;
-        const gridStartY = H / 2 - (6 * cellSize) / 2;
+        // 2. Dessin des 2 canaux d'entrée [6, 7, 2] (Canal 0 : Allié, Canal 1 : Ennemi)
+        const drawMiniChannel = (centerY, channelOffset, label, activeColor) => {
+            const cellSize = 13;
+            const gridStartX = layersX[0] - (7 * cellSize) / 2;
+            const gridStartY = centerY - (6 * cellSize) / 2;
 
-        for (let r = 0; r < 6; r++) {
-            for (let c = 0; c < 7; c++) {
-                const v = inspection.inputs[r * 7 + c];
-                const cx = gridStartX + c * cellSize + cellSize / 2;
-                const cy = gridStartY + r * cellSize + cellSize / 2;
+            ctx.font = '600 10px Poppins';
+            ctx.fillStyle = '#9aa4b8';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, layersX[0], gridStartY - 8);
 
-                // Faisceaux reliant les pions actifs aux filtres Conv2D
-                if (v !== 0) {
-                    const targetNode = convNodes[(r + c) % convNodes.length];
+            for (let r = 0; r < 6; r++) {
+                for (let c = 0; c < 7; c++) {
+                    const idx = (r * 7 + c) * 2 + channelOffset;
+                    const isActive = inspection.inputs[idx] === 1;
+                    const cx = gridStartX + c * cellSize + cellSize / 2;
+                    const cy = gridStartY + r * cellSize + cellSize / 2;
+
+                    if (isActive) {
+                        const targetNode = convNodes[(r * 7 + c) % convNodes.length];
+                        ctx.beginPath();
+                        ctx.moveTo(cx, cy);
+                        ctx.lineTo(targetNode.x, targetNode.y);
+                        ctx.strokeStyle = channelOffset === 0
+                            ? 'rgba(46, 213, 115, 0.22)'
+                            : 'rgba(255, 71, 87, 0.22)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+
                     ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    ctx.lineTo(targetNode.x, targetNode.y);
-                    ctx.strokeStyle = v === 1 ? 'rgba(46, 213, 115, 0.22)' : 'rgba(255, 71, 87, 0.22)';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
+                    ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = isActive ? activeColor : '#23253c';
+                    ctx.fill();
                 }
-
-                ctx.beginPath();
-                ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
-                ctx.fillStyle = v === 1 ? '#2ed573' : v === -1 ? '#ff4757' : '#23253c';
-                ctx.fill();
             }
-        }
+        };
 
-        // 4. Dessin des neurones des couches cachées
+        drawMiniChannel(H * 0.32, 0, 'Canal 0 : Mes Pions', '#2ed573');
+        drawMiniChannel(H * 0.72, 1, 'Canal 1 : Adversaire', '#ff4757');
+
+        // 3. Dessin des neurones cachés (Conv2D, Dense 256, Dense 128)
         const drawNodes = (nodes, vals, radius = 7) => {
             nodes.forEach((n, i) => {
                 const val = vals[i] || 0;
-                const intensity = Math.min(1, Math.abs(val) / 4);
+                const intensity = Math.min(1, Math.abs(val) / 2);
                 ctx.beginPath();
                 ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = val > 0.05
+                ctx.fillStyle = val > 0.02
                     ? `rgba(46, 213, 115, ${0.25 + intensity * 0.75})`
                     : '#2b2d48';
                 ctx.fill();
                 ctx.lineWidth = 1.5;
-                ctx.strokeStyle = val > 0.05 ? '#2ed573' : 'rgba(255,255,255,0.15)';
+                ctx.strokeStyle = val > 0.02 ? '#2ed573' : 'rgba(255,255,255,0.15)';
                 ctx.stroke();
             });
         };
@@ -125,15 +137,15 @@ class NeuralVisualizer {
         drawNodes(d256Nodes, inspection.dense256Sample, 6.5);
         drawNodes(d128Nodes, inspection.dense128Sample, 7.5);
 
-        // 5. Dessin des 7 neurones de sortie (Colonnes 1 à 7)
+        // 4. Dessin des 7 neurones de sortie (Q-Values par colonne)
         outNodes.forEach((n, c) => {
             const isChosen = c === inspection.chosenCol;
             const score = inspection.maskedScores[c];
             ctx.beginPath();
-            ctx.arc(n.x, n.y, isChosen ? 12 : 9, 0, Math.PI * 2);
+            ctx.arc(n.x, n.y, isChosen ? 11.5 : 8.5, 0, Math.PI * 2);
             ctx.fillStyle = isChosen ? '#2ed573' : (score < 0 ? '#ff4757' : '#5352ed');
             ctx.fill();
-            ctx.lineWidth = isChosen ? 3 : 1.5;
+            ctx.lineWidth = isChosen ? 2.5 : 1.5;
             ctx.strokeStyle = isChosen ? '#ffffff' : 'rgba(255,255,255,0.25)';
             ctx.stroke();
 
@@ -141,7 +153,7 @@ class NeuralVisualizer {
             ctx.fillStyle = isChosen ? '#2ed573' : '#f1f2f6';
             ctx.textAlign = 'left';
             const label = Number.isFinite(score) ? `C${c + 1}: ${score.toFixed(1)}` : `C${c + 1}: Plein`;
-            ctx.fillText(label, n.x + 16, n.y + 4);
+            ctx.fillText(label, n.x + 15, n.y + 4);
         });
     }
 
@@ -153,7 +165,7 @@ class NeuralVisualizer {
 
         ctx.clearRect(0, 0, W, H);
 
-        // Grille de fond
+        // Lignes de repère horizontales
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
         ctx.lineWidth = 1;
         for (let y = 30; y < H; y += 45) {
@@ -171,10 +183,21 @@ class NeuralVisualizer {
             return;
         }
 
-        const minVal = Math.min(-20, ...this.rewardHistory);
-        const maxVal = Math.max(100, ...this.rewardHistory);
+        const minVal = Math.min(-12, ...this.rewardHistory);
+        const maxVal = Math.max(15, ...this.rewardHistory);
         const range = Math.max(1, maxVal - minVal);
 
+        // Ligne zéro de référence
+        const zeroY = H - 25 - ((0 - minVal) / range) * (H - 50);
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(25, zeroY);
+        ctx.lineTo(W - 25, zeroY);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Courbe des récompenses
         ctx.beginPath();
         this.rewardHistory.forEach((val, idx) => {
             const x = 25 + (idx / (this.rewardHistory.length - 1)) * (W - 50);

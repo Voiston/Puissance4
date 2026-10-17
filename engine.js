@@ -23,6 +23,11 @@ class Connect4Engine {
         this.moveHistory = [];
     }
 
+    // Indispensable pour les simulations du Bot Professeur (getTeacherMove)
+    cloneBoard(grid = this.board) {
+        return grid.map(row => [...row]);
+    }
+
     getValidColumns(grid = this.board) {
         const valid = [];
         for (let c = 0; c < this.COLS; c++) {
@@ -102,9 +107,13 @@ class Connect4Engine {
             if (w.filter(v => v === player).length === 3 && w.filter(v => v === 0).length === 1) count++;
         };
         for (let i = 0; i < 4; i++) {
+            // Horizontal
             checkWindow(r, col-3+i, r, col-2+i, r, col-1+i, r, col+i);
-            checkWindow(r+i, col, r+1+i, col, r+2+i, col, r+3+i, col);
+            // Vertical (corrigé pour inclure la case vide au-dessus des 3 pions)
+            checkWindow(r-3+i, col, r-2+i, col, r-1+i, col, r+i, col);
+            // Diagonale descendante
             checkWindow(r-3+i, col-3+i, r-2+i, col-2+i, r-1+i, col-1+i, r+i, col+i);
+            // Diagonale montante
             checkWindow(r-3+i, col+3-i, r-2+i, col+2-i, r-1+i, col+1-i, r+i, col-i);
         }
         return count > 0;

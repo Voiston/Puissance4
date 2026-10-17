@@ -65,12 +65,12 @@ h1 {
 
 .badge-v {
     font-size: 0.7rem;
-    background: rgba(83, 82, 237, 0.25);
-    color: #a29bfe;
-    -webkit-text-fill-color: #a29bfe;
+    background: rgba(46, 213, 115, 0.18);
+    color: var(--accent-green);
+    -webkit-text-fill-color: var(--accent-green);
     padding: 2px 8px;
     border-radius: 8px;
-    border: 1px solid rgba(162, 155, 254, 0.3);
+    border: 1px solid rgba(46, 213, 115, 0.35);
 }
 
 #ia-status {
