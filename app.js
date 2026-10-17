@@ -2,28 +2,16 @@ const engine = new Connect4Engine(6, 7);
 const brain = new NeuralAgentManager(6, 7);
 const visualizer = new NeuralVisualizer('nn-canvas', 'chart-canvas');
 
-// État de l'application
 let isTraining = false;
 let isArena = false;
 let stopRequested = false;
 let isProcessingMove = false;
-let currentSpeed = '1'; // '1', '5', '10', '20', 'MAX'
+let currentSpeed = '1';
 let hoveredCol = null;
 let lastAITurnContext = null;
 let arenaStats = { aWins: 0, bWins: 0, draws: 0 };
 
-// Correspondance entre le sélecteur de vitesse et le délai par pion (en ms)
-const SPEED_DELAYS = {
-    '1': 550,  // Vitesse humaine : on suit chaque réflexion
-    '5': 110,  // Rapide x5
-    '10': 45,  // Très rapide x10
-    '20': 15,  // Timelapse x20
-    'MAX': 0   // Calcul brut en arrière-plan
-};
-
-// ==========================================
-// 1. INITIALISATION DOM & ONGLETS
-// ==========================================
+const SPEED_DELAYS = { '1': 550, '5': 110, '10': 45, '20': 15, 'MAX': 0 };
 
 function initDOM() {
     const gridEl = document.getElementById('board');
@@ -55,7 +43,6 @@ function initDOM() {
         brainEl.appendChild(colDiv);
     }
 
-    // Navigation par onglets
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -67,18 +54,15 @@ function initDOM() {
         };
     });
 
-    // Sélecteur de vitesse (x1, x5, x10, x20, MAX)
     document.querySelectorAll('.speed-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentSpeed = btn.dataset.speed;
-            showPopup(`⏱️ Vitesse : ${currentSpeed === 'MAX' ? '⚡ Turbo MAX' : 'x' + currentSpeed}`, '#70a1ff');
         };
     });
 
-    // Curseurs du Laboratoire (Reward Shaping)
-    const bindSlider = (id, labelId, key, suffix = ' XP', scale = 1) => {
+    const bindSlider = (id, labelId, key, suffix = '', scale = 1) => {
         const el = document.getElementById(id);
         const lbl = document.getElementById(labelId);
         if (!el || !lbl) return;
@@ -89,15 +73,11 @@ function initDOM() {
         };
     };
 
-    bindSlider('slider-block', 'val-reward-block', 'block', ' XP');
-    bindSlider('slider-three', 'val-reward-three', 'lineOfThree', ' XP');
-    bindSlider('slider-center', 'val-reward-center', 'center', ' XP');
+    bindSlider('slider-block', 'val-reward-block', 'block', '');
+    bindSlider('slider-three', 'val-reward-three', 'lineOfThree', '');
+    bindSlider('slider-center', 'val-reward-center', 'center', '');
     bindSlider('slider-epsilon', 'val-epsilon', 'minEpsilon', ' %', 0.01);
 }
-
-// ==========================================
-// 2. RENDU DU PLATEAU, JAUGES & POPUPS
-// ==========================================
 
 function updateGhostPreview(hintCol = null) {
     for (let r = 0; r < engine.ROWS; r++) {
@@ -106,7 +86,6 @@ function updateGhostPreview(hintCol = null) {
             if (cell) cell.classList.remove('ghost-preview', 'hint-preview');
         }
     }
-
     const targetCol = hintCol !== null ? hintCol : hoveredCol;
     if (targetCol === null || isTraining || isArena || isProcessingMove) return;
 
@@ -142,9 +121,7 @@ function renderBoard(lastMove = null, winningCells = null) {
 function updateBrainBars(scores, chosenCol, exploratory, aiLabel) {
     const tag = document.getElementById('brain-mode-label');
     if (tag) {
-        tag.innerText = exploratory
-            ? `🎲 ${aiLabel} explore (Curiosité)`
-            : `🎯 ${aiLabel} → Colonne ${chosenCol + 1}`;
+        tag.innerText = exploratory ? `🎲 ${aiLabel} explore` : `🎯 ${aiLabel} → Col ${chosenCol + 1}`;
     }
 
     const validScores = scores.filter(s => Number.isFinite(s));
@@ -173,7 +150,6 @@ function updateBrainBars(scores, chosenCol, exploratory, aiLabel) {
         fillEl.style.height = `${Math.round(ratio * 100)}%`;
         fillEl.style.backgroundColor = c === chosenCol ? (exploratory ? '#ffa502' : '#2ed573') : (s < 0 ? '#ff4757' : '#70a1ff');
     }
-
     visualizer.drawNeuralNetwork(brain.lastInspection);
 }
 
@@ -181,7 +157,6 @@ function showPopup(text, color = '#2ed573') {
     if ((isTraining || isArena) && currentSpeed !== '1' && currentSpeed !== '5') return;
     const layer = document.getElementById('xp-layer');
     if (!layer) return;
-
     const popup = document.createElement('div');
     popup.className = 'xp-popup';
     popup.style.color = color;
@@ -194,7 +169,7 @@ function updateTelemetry() {
     document.getElementById('stat-age-a').innerText = `${brain.agents['A'].games} parties`;
     document.getElementById('stat-age-b').innerText = `${brain.agents['B'].games} parties`;
     const mem = brain.agents['A'].memory.length + brain.agents['B'].memory.length;
-    document.getElementById('stat-mem').innerText = `${(mem / 1000).toFixed(1)}k / 100k`;
+    document.getElementById('stat-mem').innerText = `${(mem / 1000).toFixed(1)}k / 50k`;
     document.getElementById('stat-winrate').innerText = `${arenaStats.aWins} / ${arenaStats.draws} / ${arenaStats.bWins}`;
 }
 
@@ -203,10 +178,6 @@ function setStatus(text, cls = '') {
     el.className = 'status-text ' + cls;
     el.innerText = text;
 }
-
-// ==========================================
-// 3. JEU HUMAIN, CONSEIL IA & ANNULATION
-// ==========================================
 
 async function handleHumanMove(col) {
     if (isTraining || isArena || isProcessingMove || engine.board[0][col] !== 0) return;
@@ -219,16 +190,14 @@ async function handleHumanMove(col) {
         const winCoords = engine.checkWinner(1);
         const humanWon = winCoords !== null;
         const isDraw = !humanWon && engine.isFull();
-
         renderBoard(humanCoords, winCoords);
 
         if (humanWon || isDraw) {
             if (humanWon) {
-                setStatus("🎉 Bravo ! Tu as battu l'IA-A ! Punition mémorisée.", "status-win-human");
-                showPopup("💥 Punition IA : -100 XP (x50 en mémoire)", "#ff4757");
+                setStatus("🎉 Bravo ! Tu as battu l'IA-A !", "status-win-human");
+                showPopup("💥 Punition mémorisée (-10)", "#ff4757");
                 if (lastAITurnContext) {
-                    brain.saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, engine.rewardConfig.lose, lastAITurnContext.nextState, true, 25);
-                    await brain.trainBatch('A', 128);
+                    brain.saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, -10, lastAITurnContext.nextState, true, 25);
                     await brain.trainBatch('A', 128);
                     brain.agents['A'].games++;
                     await brain.checkpoint('A');
@@ -241,11 +210,9 @@ async function handleHumanMove(col) {
             return;
         }
 
-        // Réflexion de l'IA-A
         setStatus("🤔 L'IA-A analyse le plateau...", "status-thinking");
         const { col: aiCol, scores, normState: stateBefore } = brain.selectAction(engine.board, 'A', 2, 0, true);
         updateBrainBars(scores, aiCol, false, 'IA-A');
-
         await new Promise(r => setTimeout(r, 420));
 
         if (aiCol !== undefined) {
@@ -256,7 +223,6 @@ async function handleHumanMove(col) {
             const done = aiWon || aiDraw;
 
             renderBoard(aiCoords, aiWinCoords);
-
             const { reward, popup } = engine.evaluateMoveReward(aiCol, 2, aiWon, aiDraw);
             if (popup) showPopup(popup.text, popup.color);
 
@@ -269,7 +235,7 @@ async function handleHumanMove(col) {
 
             if (aiWon) setStatus("🤖 L'IA-A remporte la manche !", "status-win-ai");
             else if (aiDraw) setStatus("🤝 Match nul !");
-            else setStatus("À ton tour ! Clique sur une colonne.");
+            else setStatus("À ton tour !");
 
             if (done) {
                 brain.agents['A'].games++;
@@ -283,10 +249,7 @@ async function handleHumanMove(col) {
     }
 }
 
-// ==========================================
-// 4. ENTRAÎNEMENT SOLO & ARÈNE MULTI-VITESSES
-// ==========================================
-
+// --- BOUCLE D'ENTRAÎNEMENT AVEC PROPAGATION N-STEP ---
 async function runTrainingLoop(mode = 'A') {
     if (isTraining || isArena || isProcessingMove) return;
     isArena = (mode === 'ARENA');
@@ -306,12 +269,25 @@ async function runTrainingLoop(mode = 'A') {
         while (!gameDone && !stopRequested) {
             const activeAI = isArena ? (turn === 1 ? 'A' : 'B') : mode;
             const isVisual = currentSpeed !== 'MAX';
-            const baseEps = engine.rewardConfig.minEpsilon;
-            const eps = isArena ? Math.max(0.04, baseEps / 2) : Math.max(baseEps, 0.8 - (brain.agents[activeAI].games / 8000));
+            const eps = isArena ? 0.05 : Math.max(engine.rewardConfig.minEpsilon, 0.8 - (brain.agents[activeAI].games / 6000));
 
-            const { col, scores, exploratory, normState: stateBefore } = brain.selectAction(
-                engine.board, activeAI, turn, eps, isVisual
-            );
+            // Curriculum Learning : si l'IA a moins de 500 parties, elle joue contre le Bot Professeur (Gardien)
+            let col;
+            let scores = Array(7).fill(0);
+            let exploratory = false;
+            let stateBefore;
+
+            if (!isArena && brain.agents[mode].games < 500 && turn === 2) {
+                col = engine.getTeacherMove(2, 'GUARDIAN');
+                stateBefore = brain.getNormalizedState(engine.board, 2);
+            } else {
+                const res = brain.selectAction(engine.board, activeAI, turn, eps, isVisual);
+                col = res.col;
+                scores = res.scores;
+                exploratory = res.exploratory;
+                stateBefore = res.normState;
+            }
+
             if (col === undefined) break;
 
             const coords = engine.dropToken(col, turn);
@@ -326,34 +302,36 @@ async function runTrainingLoop(mode = 'A') {
             gameRewardSum += reward;
             const stateAfter = brain.getNormalizedState(engine.board, turn);
 
-            brain.saveMemory(activeAI, stateBefore, col, reward, stateAfter, gameDone, 1);
-            history.push({ aiKey: activeAI, stateBefore, col, stateAfter });
+            history.push({ aiKey: activeAI, stateBefore, col, stateAfter, immediateReward: reward });
 
-            if (win && history.length >= 2) {
-                const loser = history[history.length - 2];
-                brain.saveMemory(loser.aiKey, loser.stateBefore, loser.col, engine.rewardConfig.lose, loser.stateAfter, true, isArena ? 5 : 2);
-            }
-
-            // Affichage synchronisé selon la vitesse sélectionnée (x1, x5, x10, x20)
             if (isVisual) {
                 updateBrainBars(scores, col, exploratory, `IA-${activeAI}`);
                 renderBoard(coords, winCoords);
                 if (popup) showPopup(`IA-${activeAI}: ${popup.text}`, popup.color);
-
                 const delay = SPEED_DELAYS[currentSpeed] || 20;
-                await new Promise(r => setTimeout(r, gameDone ? delay * 2.2 : delay));
+                await new Promise(r => setTimeout(r, gameDone ? delay * 2 : delay));
             }
 
             if (gameDone && isArena) {
-                if (win) {
-                    if (turn === 1) arenaStats.aWins++;
-                    else arenaStats.bWins++;
-                } else {
-                    arenaStats.draws++;
-                }
+                if (win) { if (turn === 1) arenaStats.aWins++; else arenaStats.bWins++; }
+                else { arenaStats.draws++; }
             }
 
             turn = turn === 1 ? 2 : 1;
+        }
+
+        // --- PROPAGATION RÉTROACTIVE (N-STEP RETURN) ---
+        if (history.length > 0) {
+            let finalOutcomeReward = history[history.length - 1].immediateReward > 5 ? 10 : (gameDone && engine.checkWinner(1) ? -10 : 0.5);
+            let propagated = finalOutcomeReward;
+            const DECAY = 0.85;
+
+            for (let i = history.length - 1; i >= 0; i--) {
+                const h = history[i];
+                const totalR = h.immediateReward + propagated;
+                brain.saveMemory(h.aiKey, h.stateBefore, h.col, totalR, h.stateAfter, i >= history.length - 2, 1);
+                propagated = -propagated * DECAY;
+            }
         }
 
         if (isArena) {
@@ -371,7 +349,7 @@ async function runTrainingLoop(mode = 'A') {
         if (currentSpeed !== 'MAX' || sessionGames % 5 === 0) {
             setStatus(
                 isArena
-                    ? `⚔️ Arène (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} duels joués`
+                    ? `⚔️ Arène (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} duels`
                     : `💪 Entraînement IA-${mode} (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : +${sessionGames} parties`
             );
             if (currentSpeed === 'MAX') renderBoard();
@@ -380,21 +358,13 @@ async function runTrainingLoop(mode = 'A') {
         }
 
         if (sessionGames % 50 === 0) {
-            if (isArena) {
-                await brain.checkpoint('A');
-                await brain.checkpoint('B');
-            } else {
-                await brain.checkpoint(mode);
-            }
+            if (isArena) { await brain.checkpoint('A'); await brain.checkpoint('B'); }
+            else { await brain.checkpoint(mode); }
         }
     }
 
-    if (isArena) {
-        await brain.checkpoint('A');
-        await brain.checkpoint('B');
-    } else {
-        await brain.checkpoint(mode);
-    }
+    if (isArena) { await brain.checkpoint('A'); await brain.checkpoint('B'); }
+    else { await brain.checkpoint(mode); }
 
     isTraining = false;
     isArena = false;
@@ -404,16 +374,12 @@ async function runTrainingLoop(mode = 'A') {
     setStatus(`Session terminée (${sessionGames} parties). À toi de jouer !`);
 }
 
-// ==========================================
-// 5. ÉVÉNEMENTS BOUTONS
-// ==========================================
-
 function bindButtons() {
     const toggleLoop = (mode, btnId, defaultLabel) => {
         const btn = document.getElementById(btnId);
         if ((isTraining || isArena) && !stopRequested) {
             stopRequested = true;
-            btn.innerText = "Arrêt en cours...";
+            btn.innerText = "Arrêt...";
         } else if (!isTraining && !isArena) {
             btn.innerText = "🛑 Stopper";
             runTrainingLoop(mode).then(() => { btn.innerText = defaultLabel; });
@@ -438,10 +404,10 @@ function bindButtons() {
         if (isTraining || isArena || isProcessingMove) return;
         if (engine.undoLastExchange()) {
             renderBoard();
-            showPopup("⏪ Dernier tour annulé ! Teste une autre colonne.", "#70a1ff");
-            setStatus("Coup annulé. Essaie une autre stratégie !");
+            showPopup("⏪ Tour annulé", "#70a1ff");
+            setStatus("Coup annulé.");
         } else {
-            showPopup("Aucun coup à annuler", "#ff6b81");
+            showPopup("Rien à annuler", "#ff6b81");
         }
     };
 
@@ -451,13 +417,13 @@ function bindButtons() {
         if (col !== undefined) {
             updateBrainBars(scores, col, false, 'Conseil IA-A');
             updateGhostPreview(col);
-            showPopup(`💡 L'IA-A conseille la colonne ${col + 1}`, '#2ed573');
+            showPopup(`💡 Conseil : Col ${col + 1}`, '#2ed573');
         }
     };
 
     document.getElementById('btn-wipe').onclick = async () => {
         if (isTraining || isArena || isProcessingMove) return;
-        if (!confirm("Remettre les cerveaux IA-A et IA-B au Niveau 0 (Amnésie totale) ?")) return;
+        if (!confirm("Remettre les cerveaux à zéro (Niveau 0) ?")) return;
         await brain.wipeAll();
         arenaStats = { aWins: 0, bWins: 0, draws: 0 };
         visualizer.rewardHistory = [];
@@ -466,18 +432,17 @@ function bindButtons() {
         updateTelemetry();
         visualizer.drawNeuralNetwork(null);
         visualizer.drawLearningCurve();
-        showPopup("🧹 Cerveaux réinitialisés au Niveau 0 !", "#ff6b81");
-        setStatus("Cerveaux vierges ! À toi de jouer.");
+        showPopup("🧹 Cerveaux réinitialisés !", "#ff6b81");
+        setStatus("Cerveaux vierges !");
     };
 }
 
-// Démarrage de l'application
 (async function bootstrap() {
     initDOM();
     bindButtons();
     await brain.init();
-    document.getElementById('ia-status').innerText = "Double DQN Actif • Sonde Neuronale Temps Réel";
+    document.getElementById('ia-status').innerText = "AlphaZero 2-Canaux • Negamax • Bot Professeur Actif";
     updateTelemetry();
     renderBoard();
-    setStatus("À toi de jouer ! Clique sur une colonne.");
+    setStatus("Prêt ! Clique sur une colonne.");
 })();

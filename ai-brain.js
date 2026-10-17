@@ -6,23 +6,24 @@ class NeuralAgentManager {
         this.MEMORY_SIZE = 50000;
 
         this.agents = {
-            'A': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-a-v4', ageKey: 'dqn_age_a_v4' },
-            'B': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-b-v4', ageKey: 'dqn_age_b_v4' }
+            'A': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-a-v5', ageKey: 'dqn_age_a_v5' },
+            'B': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-b-v5', ageKey: 'dqn_age_b_v5' }
         };
 
         this.lastInspection = null;
     }
 
     compile(model) {
-        model.compile({ optimizer: tf.train.adam(0.00025), loss: 'meanSquaredError' });
+        model.compile({ optimizer: tf.train.adam(0.00025), loss: tf.losses.huberLoss });
         return model;
     }
 
+    // Réseau convolutif avec entrée bi-canal [6, 7, 2] (84 valeurs)
     createSequentialNetwork() {
         const m = tf.sequential();
-        m.add(tf.layers.reshape({ targetShape: [6, 7, 1], inputShape: [42] }));
-        m.add(tf.layers.conv2d({ filters: 128, kernelSize: 4, activation: 'relu', padding: 'same' }));
-        m.add(tf.layers.conv2d({ filters: 128, kernelSize: 4, activation: 'relu', padding: 'same' }));
+        m.add(tf.layers.reshape({ targetShape: [6, 7, 2], inputShape: [84] }));
+        m.add(tf.layers.conv2d({ filters: 128, kernelSize: 3, activation: 'relu', padding: 'same' }));
+        m.add(tf.layers.conv2d({ filters: 128, kernelSize: 3, activation: 'relu', padding: 'same' }));
         m.add(tf.layers.flatten());
         m.add(tf.layers.dense({ units: 256, activation: 'relu' }));
         m.add(tf.layers.dense({ units: 128, activation: 'relu' }));
@@ -30,15 +31,14 @@ class NeuralAgentManager {
         return this.compile(m);
     }
 
-    // Construit une sonde multi-sorties pour observer les neurones internes en direct
     buildProbe(seqModel) {
         return tf.model({
             inputs: seqModel.inputs,
             outputs: [
-                seqModel.layers[2].output, // Sortie Conv2D #2
-                seqModel.layers[4].output, // Sortie Dense 256
-                seqModel.layers[5].output, // Sortie Dense 128
-                seqModel.layers[6].output  // Sortie 7 Q-Values
+                seqModel.layers[2].output,
+                seqModel.layers[4].output,
+                seqModel.layers[5].output,
+                seqModel.layers[6].output
             ]
         });
     }
@@ -77,21 +77,34 @@ class NeuralAgentManager {
         }
     }
 
+    // Encodage bi-canal [6, 7, 2] : Canal 0 (Moi), Canal 1 (Adversaire)
     getNormalizedState(grid, perspectivePlayer) {
-        return grid.flat().map(v => v === 0 ? 0 : (v === perspectivePlayer ? 1 : -1));
+        const encoded = new Float32Array(84);
+        const flat = grid.flat();
+        for (let i = 0; i < 42; i++) {
+            if (flat[i] === perspectivePlayer) {
+                encoded[i * 2] = 1;
+            } else if (flat[i] !== 0) {
+                encoded[i * 2 + 1] = 1;
+            }
+        }
+        return Array.from(encoded);
     }
 
     getMirroredState(flatBoard) {
-        const mirrored = new Array(42);
-        for (let r = 0; r < this.ROWS; r++) {
-            for (let c = 0; c < this.COLS; c++) {
-                mirrored[r * this.COLS + c] = flatBoard[r * this.COLS + (this.COLS - 1 - c)];
+        const mirrored = new Array(84).fill(0);
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 7; c++) {
+                const srcIdx = (r * 7 + c) * 2;
+                const dstCol = 6 - c;
+                const dstIdx = (r * 7 + dstCol) * 2;
+                mirrored[dstIdx] = flatBoard[srcIdx];
+                mirrored[dstIdx + 1] = flatBoard[srcIdx + 1];
             }
         }
         return mirrored;
     }
 
-    // Prédit le meilleur coup et extrait (si demandé) l'activité des couches internes pour le Canvas
     selectAction(grid, aiKey, perspectivePlayer, epsilon = 0, captureActivations = true) {
         const validCols = [0, 1, 2, 3, 4, 5, 6].filter(c => grid[0][c] === 0);
         if (validCols.length === 0) return { col: undefined, scores: [], exploratory: false };
@@ -108,12 +121,8 @@ class NeuralAgentManager {
             }
 
             const [convOut, d256Out, d128Out, qOut] = ag.probe.predict(input);
-            const convArr = convOut.dataSync();
-            const d256Arr = d256Out.dataSync();
-            const d128Arr = d128Out.dataSync();
             const qArr = Array.from(qOut.dataSync());
 
-            // Échantillonnage de 14 neurones représentatifs par couche cachée pour le rendu temps réel
             const sample = (arr, count) => {
                 const res = [];
                 const step = Math.max(1, Math.floor(arr.length / count));
@@ -126,9 +135,9 @@ class NeuralAgentManager {
                 inspection: {
                     aiKey,
                     inputs: normState,
-                    convSample: sample(convArr, 12),
-                    dense256Sample: sample(d256Arr, 14),
-                    dense128Sample: sample(d128Arr, 10),
+                    convSample: sample(convOut.dataSync(), 12),
+                    dense256Sample: sample(d256Out.dataSync(), 14),
+                    dense128Sample: sample(d128Out.dataSync(), 10),
                     outputs: qArr
                 }
             };
@@ -170,6 +179,7 @@ class NeuralAgentManager {
         while (memory.length > this.MEMORY_SIZE) memory.shift();
     }
 
+    // Entraînement avec Double DQN & Équation de Bellman Negamax
     async trainBatch(aiKey, batchSize = 128) {
         const ag = this.agents[aiKey];
         if (ag.memory.length < batchSize) return;
@@ -194,9 +204,18 @@ class NeuralAgentManager {
             batch.forEach((m, i) => {
                 let target = m.reward;
                 if (!m.done) {
-                    const bestFutureAction = nextQMainValues[i].indexOf(Math.max(...nextQMainValues[i]));
+                    // Sélection du meilleur coup dans l'état suivant
+                    let bestFutureAction = 0;
+                    let bestVal = -Infinity;
+                    for (let c = 0; c < 7; c++) {
+                        if (nextQMainValues[i][c] > bestVal) {
+                            bestVal = nextQMainValues[i][c];
+                            bestFutureAction = c;
+                        }
+                    }
                     const futureValue = nextQTargetValues[i][bestFutureAction];
-                    target = m.reward + this.GAMMA * futureValue;
+                    // Negamax : ce qui est bon pour l'adversaire au tour suivant est soustrait
+                    target = m.reward - this.GAMMA * futureValue;
                 }
                 qValues[i][m.action] = target;
             });
