@@ -3,56 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Neural Lab V6</title>
+    <title>Puissance 4 - Chibi Neural Lab</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
     <div class="app-shell">
-        <!-- EN-TÊTE -->
+        <!-- EN-TÊTE DOUX -->
         <header class="top-bar">
             <div class="brand">
                 <div class="title-row">
-                    <h1>Neural Arena <span class="badge-v">V6 Masterclass</span></h1>
-                    <button id="btn-sound" class="icon-btn" title="Activer/Couper les effets sonores">🔊</button>
+                    <h1>🍓 Chibi Connect <span class="badge-v">Cozy AI Lab</span></h1>
+                    <button id="btn-sound" class="icon-btn" title="Activer/Couper la boîte à musique">🔊</button>
                 </div>
-                <p id="ia-status">Initialisation de TensorFlow.js...</p>
+                <p id="ia-status">Préparation des petits neurones...</p>
             </div>
 
-            <!-- Sélecteur de vitesse global -->
-            <div class="speed-selector" title="Modifiez la vitesse d'entraînement en direct">
-                <span class="speed-label">⏱️ Vitesse :</span>
+            <!-- Sélecteur de vitesse façon bonbons pastel -->
+            <div class="speed-selector" title="Modifiez le rythme d'apprentissage">
+                <span class="speed-label">⏱️ Rythme :</span>
                 <div class="speed-buttons">
                     <button class="speed-btn active" data-speed="1">x1</button>
                     <button class="speed-btn" data-speed="5">x5</button>
                     <button class="speed-btn" data-speed="10">x10</button>
                     <button class="speed-btn" data-speed="20">x20</button>
-                    <button class="speed-btn turbo" data-speed="MAX">⚡ MAX</button>
+                    <button class="speed-btn turbo" data-speed="MAX">⚡ Max</button>
                 </div>
             </div>
         </header>
 
-        <!-- TÉLÉMÉTRIE & RANGS D'ÉVOLUTION -->
+        <!-- TÉLÉMÉTRIE PASTEL -->
         <section class="telemetry-bar">
-            <div class="stat-pill">
-                <span class="label">Cerveau IA-A</span>
+            <div class="stat-pill pill-a">
+                <span class="label">Mochi-A (Miel)</span>
                 <strong id="stat-age-a" class="val-a">0 partie</strong>
                 <span id="rank-a" class="rank-badge">🐣 Nouveau-né</span>
             </div>
-            <div class="stat-pill">
-                <span class="label">Cerveau IA-B</span>
+            <div class="stat-pill pill-b">
+                <span class="label">Mochi-B (Lavande)</span>
                 <strong id="stat-age-b" class="val-b">0 partie</strong>
                 <span id="rank-b" class="rank-badge">🐣 Nouveau-né</span>
             </div>
-            <div class="stat-pill">
-                <span class="label">Mémoire Active</span>
+            <div class="stat-pill pill-mem">
+                <span class="label">Boîte à Souvenirs</span>
                 <strong id="stat-mem">0.0k / 50k</strong>
-                <span class="rank-badge">Symétrie ×2</span>
+                <span class="rank-badge">Miroir ×2</span>
             </div>
-            <div class="stat-pill">
-                <span class="label">Arène (A / Nul / B)</span>
+            <div class="stat-pill pill-arena">
+                <span class="label">Matchs (A / Nul / B)</span>
                 <strong id="stat-winrate">0 / 0 / 0</strong>
                 <span id="stat-curriculum" class="rank-badge">Professeur Actif</span>
             </div>
@@ -60,55 +60,60 @@
 
         <!-- NAVIGATION PAR ONGLETS -->
         <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="tab-game">🎮 Plateau & Arène</button>
-            <button class="tab-btn" data-tab="tab-network">🧠 Rayons X & Attention</button>
-            <button class="tab-btn" data-tab="tab-lab">🎛️ Laboratoire & Clonage</button>
+            <button class="tab-btn active" data-tab="tab-game">🧸 Plateau & Jeu</button>
+            <button class="tab-btn" data-tab="tab-network">🫧 Bulles de Neurones</button>
+            <button class="tab-btn" data-tab="tab-lab">🧁 Atelier & Recettes</button>
         </nav>
 
-        <!-- BANDEAU D'ACTIONS D'ENTRAÎNEMENT -->
+        <!-- BANDEAU MASCOTTE CHIBI & ENTRAÎNEMENT -->
         <div class="action-ribbon">
-            <div id="status" class="status-text">Préparation du plateau...</div>
+            <div class="mascot-box">
+                <div id="mascot-avatar" class="mascot-avatar">( ◕ ㅅ ◕ )</div>
+                <div class="mascot-speech">
+                    <span class="mascot-name">Mochi-IA</span>
+                    <div id="status" class="status-text">Coucou ! On fait une partie ?</div>
+                </div>
+            </div>
             <div class="training-actions">
-                <button id="btn-train-a" class="btn-train-a">💪 Entraîner IA-A</button>
-                <button id="btn-train-b" class="btn-train-b">💪 Entraîner IA-B</button>
-                <button id="btn-arena" class="btn-arena">⚔️ Arène (A vs B)</button>
+                <button id="btn-train-a" class="btn-train-a">🍯 Entraîner A</button>
+                <button id="btn-train-b" class="btn-train-b">🫐 Entraîner B</button>
+                <button id="btn-arena" class="btn-arena">🎡 Match A vs B</button>
             </div>
         </div>
 
         <!-- ==========================================
-             ONGLET 1 : PLATEAU DE JEU INTERACTIF
+             ONGLET 1 : PLATEAU DE JEU CHIBI
              ========================================== -->
         <main id="tab-game" class="tab-content active">
-            <!-- Sélecteur de mode de jeu & Vision Thermique -->
             <div class="mode-bar">
                 <div class="mode-select-group">
                     <label for="game-mode">Mode :</label>
                     <select id="game-mode" class="mode-select">
-                        <option value="HUMAN_FIRST">🔴 Humain (1er) vs 🤖 IA-A</option>
-                        <option value="AI_FIRST">🤖 IA-A (1er) vs 🔴 Humain</option>
-                        <option value="COACH_2P">👥 Duel 2 Joueurs + 🧠 Coach IA en direct</option>
-                        <option value="VS_TEACHER">🔴 Humain vs 🛡️ Bot Professeur (Gardien)</option>
+                        <option value="HUMAN_FIRST">🍓 Joueur (1er) vs 🍯 Mochi-A</option>
+                        <option value="AI_FIRST">🍯 Mochi-A (1er) vs 🍓 Joueur</option>
+                        <option value="COACH_2P">👯 2 Joueurs + 🧚 Coach Mochi</option>
+                        <option value="VS_TEACHER">🍓 Joueur vs 🦉 Maître Hibou (Bot)</option>
                     </select>
                 </div>
-                <button id="btn-thermal" class="btn-thermal active" title="Afficher les scores de l'IA directement sur les cases jouables">
-                    👁️ Vision Thermique : ON
+                <button id="btn-thermal" class="btn-thermal active" title="Afficher les petites bulles d'aide sur la grille">
+                    🌸 Bulles d'Intuition : ON
                 </button>
             </div>
 
             <div class="game-layout">
                 <div class="board-column">
-                    <!-- Visualiseur des 7 Q-Values -->
+                    <!-- Jauges d'humeur par colonne -->
                     <div class="brain-panel">
                         <div class="brain-header">
-                            <span>🧠 Évaluation par colonne (Q-Values)</span>
-                            <span id="brain-mode-label" class="brain-tag">En attente</span>
+                            <span>💭 Envie de jouer par colonne (Confiance)</span>
+                            <span id="brain-mode-label" class="brain-tag">Au repos</span>
                         </div>
                         <div id="brain-bars" class="brain-grid"></div>
                     </div>
 
-                    <!-- Plateau entouré de la jauge d'avantage façon Chess.com -->
+                    <!-- Plateau + Jauge d'équilibre pastel -->
                     <div class="arena-stage">
-                        <div class="eval-bar-container" title="Jauge d'avantage estimée par l'IA">
+                        <div class="eval-bar-container" title="Équilibre de la partie">
                             <div id="eval-bar-fill" class="eval-bar-fill"></div>
                             <span id="eval-bar-text" class="eval-bar-text">0.0</span>
                         </div>
@@ -121,27 +126,27 @@
 
                     <!-- Barre d'outils joueur -->
                     <div class="human-toolbar">
-                        <button id="btn-reset" class="btn-primary">🔄 Nouvelle Partie</button>
-                        <button id="btn-undo" class="btn-secondary" title="Annuler le dernier échange">⏪ Annuler coup</button>
-                        <button id="btn-hint" class="btn-secondary" title="Demander à l'IA-A le meilleur coup">💡 Conseil IA</button>
-                        <button id="btn-wipe" class="btn-danger" title="Remettre les réseaux à zéro">🧹 Niveau 0</button>
+                        <button id="btn-reset" class="btn-primary">🌱 Nouvelle Partie</button>
+                        <button id="btn-undo" class="btn-secondary" title="Remonter d'un tour">⏪ Oups, annuler</button>
+                        <button id="btn-hint" class="btn-secondary" title="Demander un coup de pouce">💡 Indice</button>
+                        <button id="btn-wipe" class="btn-danger" title="Faire oublier tout ce que l'IA a appris">🧹 Oubli total</button>
                     </div>
                 </div>
             </div>
         </main>
 
         <!-- ==========================================
-             ONGLET 2 : RAYONS X & CARTE D'ATTENTION
+             ONGLET 2 : BULLES DE NEURONES (RAYONS X)
              ========================================== -->
         <section id="tab-network" class="tab-content">
             <div class="network-header">
                 <div>
-                    <h2>Radiographie du Réseau & Carte d'Attention Spatiale</h2>
-                    <p>Observez les 2 canaux <code>[6×7×2]</code>, la carte d'attention des filtres <code>Conv2D (3×3)</code> et les synapses actives.</p>
+                    <h2>✨ Dans la tête de Mochi-IA</h2>
+                    <p>Chaque petite bulle s'illumine quand Mochi reconnaît une forme sur le plateau <code>[6×7×2]</code>.</p>
                 </div>
                 <div class="network-legend">
-                    <span class="legend-item"><i class="dot pos"></i> Synapse Positive (+)</span>
-                    <span class="legend-item"><i class="dot neg"></i> Inhibition / Danger (-)</span>
+                    <span class="legend-item"><i class="dot pos"></i> Bonne idée (+)</span>
+                    <span class="legend-item"><i class="dot neg"></i> Danger évité (-)</span>
                 </div>
             </div>
 
@@ -151,46 +156,43 @@
 
             <div class="Inspector-cards">
                 <div class="info-card">
-                    <h3>🔥 Carte d'Attention Spatiale (Conv2D)</h3>
-                    <p>Le réseau balaie la grille avec 128 filtres 3×3. Les zones les plus lumineuses sur le schéma indiquent où le cerveau concentre son regard (menaces et croisements).</p>
+                    <h3>🔍 Les Lunettes Magiques (Conv2D 3×3)</h3>
+                    <p>En bas à gauche du dessin, la grille « Regard » montre les cases qui attirent le plus l'attention de Mochi à cet instant précis.</p>
                 </div>
                 <div class="info-card">
-                    <h3>♟️ Équation de Bellman Negamax</h3>
-                    <p>Contrairement à un jeu solo, la valeur du plateau après un coup appartient à l'adversaire : l'IA cherche donc à maximiser $r - \gamma \max Q_{\text{adversaire}}$.</p>
+                    <h3>⚖️ Se mettre à la place de l'autre (Negamax)</h3>
+                    <p>Avant de poser son pion, Mochi imagine la meilleure réponse que tu pourrais lui faire au tour suivant pour éviter les pièges.</p>
                 </div>
             </div>
         </section>
 
         <!-- ==========================================
-             ONGLET 3 : LABORATOIRE, CLONAGE & EXPORT
+             ONGLET 3 : ATELIER & RECETTES D'APPRENTISSAGE
              ========================================== -->
         <section id="tab-lab" class="tab-content">
             <div class="lab-grid">
-                <!-- Expériences génétiques & Clonage -->
                 <div class="lab-card">
-                    <h3>🧬 Manipulation Génétique & Sauvegarde Fichier</h3>
-                    <p class="lab-sub">Clonez l'IA-A dans l'IA-B avant un entraînement pour faire s'affronter la « version jeune » et la « version surentraînée » dans l'Arène !</p>
+                    <h3>🎀 Duplication & Souvenir</h3>
+                    <p class="lab-sub">Copie le cerveau de Mochi-A dans Mochi-B avant de l'entraîner, puis fais-les jouer ensemble pour voir ses progrès !</p>
                     <div class="genetic-actions">
-                        <button id="btn-clone-a-to-b" class="btn-secondary">🧬 Cloner IA-A ➔ IA-B (Figer un témoin)</button>
-                        <button id="btn-export-a" class="btn-secondary">💾 Télécharger IA-A (.json/.weights)</button>
+                        <button id="btn-clone-a-to-b" class="btn-secondary">👯 Copier Mochi-A ➔ Mochi-B</button>
+                        <button id="btn-export-a" class="btn-secondary">🎁 Sauvegarder Mochi-A en fichier</button>
                     </div>
                 </div>
 
-                <!-- Courbe d'apprentissage -->
                 <div class="lab-card">
-                    <h3>📈 Courbe de progression (Récompense cumulée par partie)</h3>
-                    <p class="lab-sub">La ligne pointillée marque l'équilibre (0). Au-dessus, l'IA enchaîne les parades et les victoires.</p>
+                    <h3>📈 Journal des Progrès</h3>
+                    <p class="lab-sub">Quand la courbe verte grimpe au-dessus des pointillés, Mochi réussit de plus en plus de parades et d'alignements.</p>
                     <canvas id="chart-canvas" width="680" height="210"></canvas>
                 </div>
 
-                <!-- Sliders de Reward Shaping -->
                 <div class="lab-card">
-                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping)</h3>
-                    <p class="lab-sub">Modifiez les récompenses en temps réel pour orienter l'apprentissage :</p>
+                    <h3>🧁 Recette d'Éducation (Friandises d'Apprentissage)</h3>
+                    <p class="lab-sub">Choisis combien de friandises Mochi reçoit lorsqu'elle fait une belle action :</p>
 
                     <div class="slider-group">
                         <label>
-                            <span>🛡️ Instinct de survie (Parade décisive)</span>
+                            <span>🛡️ Prudence (Bloquer un alignement adverse)</span>
                             <strong id="val-reward-block">+5</strong>
                         </label>
                         <input type="range" id="slider-block" min="0" max="12" step="0.5" value="5">
@@ -198,7 +200,7 @@
 
                     <div class="slider-group">
                         <label>
-                            <span>⚡ Agressivité (Aligner 3 pions)</span>
+                            <span>⚡ Malice (Aligner 3 pions)</span>
                             <strong id="val-reward-three">+1</strong>
                         </label>
                         <input type="range" id="slider-three" min="0" max="5" step="0.2" value="1">
@@ -206,7 +208,7 @@
 
                     <div class="slider-group">
                         <label>
-                            <span>🎯 Contrôle du centre (Colonne 4)</span>
+                            <span>🎯 Équilibre (Jouer au milieu)</span>
                             <strong id="val-reward-center">+0.2</strong>
                         </label>
                         <input type="range" id="slider-center" min="0" max="2" step="0.1" value="0.2">
@@ -214,7 +216,7 @@
 
                     <div class="slider-group">
                         <label>
-                            <span>🎲 Curiosité minimale (Exploration $\epsilon$)</span>
+                            <span>🦋 Curiosité (Envie de tester des coups au hasard)</span>
                             <strong id="val-epsilon">10 %</strong>
                         </label>
                         <input type="range" id="slider-epsilon" min="0" max="50" step="2" value="10">

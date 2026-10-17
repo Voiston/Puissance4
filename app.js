@@ -8,15 +8,36 @@ let isArena = false;
 let stopRequested = false;
 let isProcessingMove = false;
 let currentSpeed = '1';
-let gameMode = 'HUMAN_FIRST'; // HUMAN_FIRST, AI_FIRST, COACH_2P, VS_TEACHER
+let gameMode = 'HUMAN_FIRST';
 let thermalVision = true;
-let humanTurnPlayer = 1; // Utilisé en mode 2 joueurs
+let humanTurnPlayer = 1;
 let hoveredCol = null;
 let lastAITurnContext = null;
 let lastKnownScores = [0, 0, 0, 0, 0, 0, 0];
 let arenaStats = { aWins: 0, bWins: 0, draws: 0 };
 
 const SPEED_DELAYS = { '1': 550, '5': 110, '10': 45, '20': 15, 'MAX': 0 };
+
+// Visages Chibi (Kaomoji) de Mochi-IA selon son humeur
+const MASCOT_FACES = {
+    IDLE: '( ◕ ㅅ ◕ )',
+    THINK: '( ◔ ㅅ ◔ )💭',
+    HAPPY: '( ≧ ◡ ≦ )✨',
+    PROUD: '( •̀ ᴗ •́ )🛡️',
+    SAD: '( ╥ ﹏ ╥ )💦',
+    TRAIN: '( ง •̀_•́)ง🔥',
+    COACH: '( ◕ ‿ ◕ )💡'
+};
+
+function setMascotMood(moodKey) {
+    const el = document.getElementById('mascot-avatar');
+    if (!el) return;
+    el.innerText = MASCOT_FACES[moodKey] || MASCOT_FACES.IDLE;
+    el.classList.remove('bounce');
+    void el.offsetWidth;
+    el.classList.add('bounce');
+    setTimeout(() => el.classList.remove('bounce'), 300);
+}
 
 function initDOM() {
     const gridEl = document.getElementById('board');
@@ -84,7 +105,6 @@ function initDOM() {
     bindSlider('slider-epsilon', 'val-epsilon', 'minEpsilon', ' %', 0.01);
 }
 
-// Met à jour le pion fantôme ET la Vision Thermique sur les cases jouables
 function updateGhostAndThermal(hintCol = null) {
     for (let r = 0; r < engine.ROWS; r++) {
         for (let c = 0; c < engine.COLS; c++) {
@@ -100,7 +120,6 @@ function updateGhostAndThermal(hintCol = null) {
 
     if (isTraining || isArena) return;
 
-    // Affichage de la Vision Thermique sur la case vide la plus basse de chaque colonne
     if (thermalVision && lastKnownScores.length === 7) {
         for (let c = 0; c < engine.COLS; c++) {
             const r = engine.getLowestEmptyRow(c);
@@ -108,8 +127,9 @@ function updateGhostAndThermal(hintCol = null) {
             if (r !== -1 && Number.isFinite(score)) {
                 const cell = document.getElementById(`cell-${r}-${c}`);
                 if (cell) {
-                    const color = score >= 1.5 ? '#2ed573' : (score < -1.5 ? '#ff4757' : '#70a1ff');
-                    cell.style.boxShadow = `inset 0 0 10px ${color}66`;
+                    const color = score >= 1.5 ? '#2d936c' : (score < -1.5 ? '#d64568' : '#5c80bc');
+                    const bgGlow = score >= 1.5 ? '#6bcf9755' : (score < -1.5 ? '#ff85a155' : '#a3c4f355');
+                    cell.style.boxShadow = `inset 0 0 12px ${bgGlow}`;
                     cell.innerHTML = `<span class="thermal-badge" style="color:${color}">${score >= 0 ? '+' : ''}${score.toFixed(1)}</span>`;
                 }
             }
@@ -131,7 +151,6 @@ function updateEvalBar(scores, perspectivePlayer = 2) {
     if (!valid.length) return;
     const bestQ = Math.max(...valid);
 
-    // perspectivePlayer = 2 (Jaune/IA) -> si bestQ > 0, Jaune a l'avantage
     const yellowAdvantage = perspectivePlayer === 2 ? bestQ : -bestQ;
     const pctYellow = Math.round(50 + Math.tanh(yellowAdvantage / 8) * 46);
 
@@ -170,7 +189,7 @@ function updateBrainBars(scores, chosenCol, exploratory, aiLabel, perspectivePla
     lastKnownScores = scores;
     const tag = document.getElementById('brain-mode-label');
     if (tag) {
-        tag.innerText = exploratory ? `🎲 ${aiLabel} explore` : `🎯 ${aiLabel} → Col ${chosenCol + 1}`;
+        tag.innerText = exploratory ? `🦋 ${aiLabel} est curieuse` : `🌸 ${aiLabel} aime la Col. ${chosenCol + 1}`;
     }
 
     const validScores = scores.filter(s => Number.isFinite(s));
@@ -189,15 +208,15 @@ function updateBrainBars(scores, chosenCol, exploratory, aiLabel, perspectivePla
 
         if (!Number.isFinite(s)) {
             scoreEl.innerText = 'Plein';
-            fillEl.style.height = '8%';
-            fillEl.style.backgroundColor = '#2f3542';
+            fillEl.style.height = '10%';
+            fillEl.style.backgroundColor = '#d8d0c5';
             continue;
         }
 
         scoreEl.innerText = (s >= 0 ? '+' : '') + s.toFixed(1);
-        const ratio = Math.max(0.12, Math.min(1, (s - minS) / spread));
+        const ratio = Math.max(0.14, Math.min(1, (s - minS) / spread));
         fillEl.style.height = `${Math.round(ratio * 100)}%`;
-        fillEl.style.backgroundColor = c === chosenCol ? (exploratory ? '#ffa502' : '#2ed573') : (s < 0 ? '#ff4757' : '#70a1ff');
+        fillEl.style.backgroundColor = c === chosenCol ? (exploratory ? '#ffca5c' : '#6bcf97') : (s < 0 ? '#ff85a1' : '#8ecae6');
     }
 
     updateEvalBar(scores, perspectivePlayer);
@@ -205,7 +224,7 @@ function updateBrainBars(scores, chosenCol, exploratory, aiLabel, perspectivePla
     updateGhostAndThermal();
 }
 
-function showPopup(text, color = '#2ed573') {
+function showPopup(text, color = '#3b8c62') {
     if ((isTraining || isArena) && currentSpeed !== '1' && currentSpeed !== '5') return;
     const layer = document.getElementById('xp-layer');
     if (!layer) return;
@@ -214,7 +233,7 @@ function showPopup(text, color = '#2ed573') {
     popup.style.color = color;
     popup.innerText = text;
     layer.appendChild(popup);
-    setTimeout(() => popup.remove(), 1200);
+    setTimeout(() => popup.remove(), 1250);
 }
 
 function updateTelemetry() {
@@ -228,7 +247,7 @@ function updateTelemetry() {
     const mem = brain.agents['A'].memory.length + brain.agents['B'].memory.length;
     document.getElementById('stat-mem').innerText = `${(mem / 1000).toFixed(1)}k / 50k`;
     document.getElementById('stat-winrate').innerText = `${arenaStats.aWins} / ${arenaStats.draws} / ${arenaStats.bWins}`;
-    document.getElementById('stat-curriculum').innerText = gamesA < 500 ? "🛡️ Professeur Actif" : "⚔️ Autonome";
+    document.getElementById('stat-curriculum').innerText = gamesA < 500 ? "🦉 Hibou Actif" : "🦋 Autonome";
 }
 
 function setStatus(text, cls = '') {
@@ -237,12 +256,9 @@ function setStatus(text, cls = '') {
     el.innerText = text;
 }
 
-// ==========================================
-// GESTION DES 4 MODES DE JEU HUMAIN
-// ==========================================
-
 async function triggerAIResponse() {
-    setStatus("🤔 L'adversaire réfléchit...", "status-thinking");
+    setMascotMood('THINK');
+    setStatus("Hmm... Mochi réfléchit à son coup...", "status-thinking");
 
     let aiCol;
     let scores = [0, 0, 0, 0, 0, 0, 0];
@@ -252,13 +268,13 @@ async function triggerAIResponse() {
         aiCol = engine.getTeacherMove(2, 'GUARDIAN');
         const res = brain.selectAction(engine.board, 'A', 2, 0, true);
         scores = res.scores;
-        updateBrainBars(scores, aiCol, false, 'Bot Gardien', 2);
+        updateBrainBars(scores, aiCol, false, 'Maître Hibou', 2);
     } else {
         const res = brain.selectAction(engine.board, 'A', 2, 0, true);
         aiCol = res.col;
         scores = res.scores;
         stateBefore = res.normState;
-        updateBrainBars(scores, aiCol, false, 'IA-A', 2);
+        updateBrainBars(scores, aiCol, false, 'Mochi-A', 2);
     }
 
     await new Promise(r => setTimeout(r, 420));
@@ -274,8 +290,11 @@ async function triggerAIResponse() {
         renderBoard(aiCoords, aiWinCoords);
         const { reward, popup } = engine.evaluateMoveReward(aiCol, 2, aiWon, aiDraw);
         if (popup) {
-            showPopup(popup.text, popup.color);
-            if (reward >= 5) sfx.reward();
+            showPopup(popup.text, '#2d7a50');
+            if (reward >= 5) {
+                sfx.reward();
+                setMascotMood('PROUD');
+            }
         }
 
         const stateAfter = brain.getNormalizedState(engine.board, 2);
@@ -284,19 +303,21 @@ async function triggerAIResponse() {
         brain.saveMemory('A', stateBefore, aiCol, reward, stateAfter, done, 25);
         await brain.trainBatch('A', 128);
 
-        // Met à jour la vision thermique pour le prochain coup de l'humain
         const nextHumanEval = brain.selectAction(engine.board, 'A', 1, 0, false);
         lastKnownScores = nextHumanEval.scores;
         updateGhostAndThermal();
         updateTelemetry();
 
         if (aiWon) {
-            sfx.punish();
-            setStatus("🤖 L'IA remporte la manche !", "status-win-ai");
+            sfx.win();
+            setMascotMood('HAPPY');
+            setStatus("Youpi ! Mochi a aligné 4 pions !", "status-win-ai");
         } else if (aiDraw) {
-            setStatus("🤝 Match nul !");
+            setMascotMood('IDLE');
+            setStatus("🤝 Égalité parfaite ! Belle partie !");
         } else {
-            setStatus("À ton tour ! Clique sur une colonne.");
+            if (reward < 5) setMascotMood('IDLE');
+            setStatus("À toi de jouer ! Clique sur une colonne.");
         }
 
         if (done) {
@@ -312,7 +333,6 @@ async function handleHumanMove(col) {
     isProcessingMove = true;
 
     try {
-        // MODE DUEL 2 JOUEURS AVEC COACH IA
         if (gameMode === 'COACH_2P') {
             const coords = engine.dropToken(col, humanTurnPlayer);
             if (!coords) return;
@@ -325,7 +345,8 @@ async function handleHumanMove(col) {
 
             if (won) {
                 sfx.win();
-                setStatus(`🎉 Joueur ${humanTurnPlayer === 1 ? 'Rouge' : 'Jaune'} gagne la partie !`, humanTurnPlayer === 1 ? 'status-win-human' : 'status-win-ai');
+                setMascotMood('HAPPY');
+                setStatus(`🎉 Bravo ! Le pion ${humanTurnPlayer === 1 ? '🍓 Fraise' : '🍯 Miel'} gagne !`, humanTurnPlayer === 1 ? 'status-win-human' : 'status-win-ai');
                 return;
             }
             if (draw) {
@@ -335,12 +356,12 @@ async function handleHumanMove(col) {
 
             humanTurnPlayer = humanTurnPlayer === 1 ? 2 : 1;
             const coach = brain.selectAction(engine.board, 'A', humanTurnPlayer, 0, true);
+            setMascotMood('COACH');
             updateBrainBars(coach.scores, coach.col, false, `Coach J${humanTurnPlayer}`, humanTurnPlayer);
-            setStatus(`Tour du Joueur ${humanTurnPlayer === 1 ? '🔴 Rouge' : '🟡 Jaune'} (Coach conseille Col ${coach.col + 1})`);
+            setStatus(`Tour de ${humanTurnPlayer === 1 ? '🍓 Fraise' : '🍯 Miel'} (Mochi suggère la Col. ${coach.col + 1})`);
             return;
         }
 
-        // MODES CONTRE IA OU BOT PROFESSEUR
         const humanCoords = engine.dropToken(col, 1);
         if (!humanCoords) return;
         sfx.drop(true);
@@ -352,9 +373,10 @@ async function handleHumanMove(col) {
 
         if (humanWon || isDraw) {
             if (humanWon) {
-                sfx.win();
-                setStatus("🎉 Bravo ! Tu as gagné ! L'IA mémorise son erreur.", "status-win-human");
-                showPopup("💥 Punition IA : -10 (x50 en mémoire)", "#ff4757");
+                sfx.punish();
+                setMascotMood('SAD');
+                setStatus("Oups ! Tu as gagné ! Mochi note son erreur pour la prochaine fois.", "status-win-human");
+                showPopup("💦 Leçon apprise par Mochi (-10)", "#d64568");
                 if (lastAITurnContext) {
                     brain.saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, -10, lastAITurnContext.nextState, true, 25);
                     await brain.trainBatch('A', 128);
@@ -363,6 +385,7 @@ async function handleHumanMove(col) {
                     updateTelemetry();
                 }
             } else {
+                setMascotMood('IDLE');
                 setStatus("🤝 Match nul !");
             }
             lastAITurnContext = null;
@@ -376,16 +399,13 @@ async function handleHumanMove(col) {
     }
 }
 
-// ==========================================
-// BOUCLE D'ENTRAÎNEMENT & ARÈNE
-// ==========================================
-
 async function runTrainingLoop(mode = 'A') {
     if (isTraining || isArena || isProcessingMove) return;
     isArena = (mode === 'ARENA');
     isTraining = !isArena;
     stopRequested = false;
 
+    setMascotMood('TRAIN');
     let sessionGames = 0;
 
     while (!stopRequested) {
@@ -435,9 +455,9 @@ async function runTrainingLoop(mode = 'A') {
 
             if (isVisual) {
                 if (currentSpeed === '1') sfx.drop(turn === 1);
-                updateBrainBars(scores, col, exploratory, `IA-${activeAI}`, turn);
+                updateBrainBars(scores, col, exploratory, `Mochi-${activeAI}`, turn);
                 renderBoard(coords, winCoords);
-                if (popup) showPopup(`IA-${activeAI}: ${popup.text}`, popup.color);
+                if (popup) showPopup(`Mochi-${activeAI}: ${popup.text}`, '#2d7a50');
                 const delay = SPEED_DELAYS[currentSpeed] || 20;
                 await new Promise(r => setTimeout(r, gameDone ? delay * 2 : delay));
             }
@@ -478,8 +498,8 @@ async function runTrainingLoop(mode = 'A') {
         if (currentSpeed !== 'MAX' || sessionGames % 5 === 0) {
             setStatus(
                 isArena
-                    ? `⚔️ Arène (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} duels`
-                    : `💪 Entraînement IA-${mode} (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : +${sessionGames} parties`
+                    ? `🎡 Match amical (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} parties`
+                    : `🍯 Mochi-${mode} s'entraîne (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : +${sessionGames} parties`
             );
             if (currentSpeed === 'MAX') renderBoard();
             updateTelemetry();
@@ -509,6 +529,7 @@ async function startNewHumanGame() {
     humanTurnPlayer = 1;
     engine.reset();
 
+    setMascotMood('IDLE');
     const initEval = brain.selectAction(engine.board, 'A', 1, 0, true);
     lastKnownScores = initEval.scores;
     renderBoard();
@@ -518,10 +539,11 @@ async function startNewHumanGame() {
         await triggerAIResponse();
         isProcessingMove = false;
     } else if (gameMode === 'COACH_2P') {
+        setMascotMood('COACH');
         updateBrainBars(initEval.scores, initEval.col, false, 'Coach J1', 1);
-        setStatus("👥 Mode 2 Joueurs : Au tour de 🔴 Rouge !");
+        setStatus("👯 Mode 2 Joueurs : Au tour de 🍓 Fraise !");
     } else {
-        setStatus("Nouvelle partie ! Pose un pion rouge.");
+        setStatus("Coucou ! Pose un pion 🍓 Fraise pour commencer.");
     }
 }
 
@@ -530,16 +552,16 @@ function bindButtons() {
         const btn = document.getElementById(btnId);
         if ((isTraining || isArena) && !stopRequested) {
             stopRequested = true;
-            btn.innerText = "Arrêt...";
+            btn.innerText = "Pause...";
         } else if (!isTraining && !isArena) {
-            btn.innerText = "🛑 Stopper";
+            btn.innerText = "🛑 Pause";
             runTrainingLoop(mode).then(() => { btn.innerText = defaultLabel; });
         }
     };
 
-    document.getElementById('btn-train-a').onclick = () => toggleLoop('A', 'btn-train-a', "💪 Entraîner IA-A");
-    document.getElementById('btn-train-b').onclick = () => toggleLoop('B', 'btn-train-b', "💪 Entraîner IA-B");
-    document.getElementById('btn-arena').onclick = () => toggleLoop('ARENA', 'btn-arena', "⚔️ Arène (A vs B)");
+    document.getElementById('btn-train-a').onclick = () => toggleLoop('A', 'btn-train-a', "🍯 Entraîner A");
+    document.getElementById('btn-train-b').onclick = () => toggleLoop('B', 'btn-train-b', "🫐 Entraîner B");
+    document.getElementById('btn-arena').onclick = () => toggleLoop('ARENA', 'btn-arena', "🎡 Match A vs B");
 
     document.getElementById('btn-reset').onclick = () => startNewHumanGame();
 
@@ -551,7 +573,7 @@ function bindButtons() {
     document.getElementById('btn-thermal').onclick = (e) => {
         thermalVision = !thermalVision;
         e.currentTarget.classList.toggle('active', thermalVision);
-        e.currentTarget.innerText = `👁️ Vision Thermique : ${thermalVision ? 'ON' : 'OFF'}`;
+        e.currentTarget.innerText = `🌸 Bulles d'Intuition : ${thermalVision ? 'ON' : 'OFF'}`;
         updateGhostAndThermal();
     };
 
@@ -566,9 +588,10 @@ function bindButtons() {
         if (engine.undoLastExchange(steps)) {
             if (gameMode === 'COACH_2P') humanTurnPlayer = humanTurnPlayer === 1 ? 2 : 1;
             renderBoard();
-            showPopup("⏪ Coup annulé", "#70a1ff");
+            setMascotMood('IDLE');
+            showPopup("⏪ Tour annulé", "#548cc4");
         } else {
-            showPopup("Rien à annuler", "#ff6b81");
+            showPopup("Rien à annuler", "#d64568");
         }
     };
 
@@ -577,9 +600,10 @@ function bindButtons() {
         const p = gameMode === 'COACH_2P' ? humanTurnPlayer : 1;
         const { col, scores } = brain.selectAction(engine.board, 'A', p, 0, true);
         if (col !== undefined) {
-            updateBrainBars(scores, col, false, 'Conseil IA-A', p);
+            setMascotMood('COACH');
+            updateBrainBars(scores, col, false, 'Indice Mochi', p);
             updateGhostAndThermal(col);
-            showPopup(`💡 Conseil : Colonne ${col + 1}`, '#2ed573');
+            showPopup(`💡 Mochi conseille la Colonne ${col + 1}`, '#2d7a50');
         }
     };
 
@@ -587,21 +611,22 @@ function bindButtons() {
         if (isTraining || isArena) return;
         await brain.cloneAgent('A', 'B');
         updateTelemetry();
-        showPopup("🧬 IA-A clonée dans IA-B !", "#2ed573");
+        setMascotMood('HAPPY');
+        showPopup("👯 Mochi-A copiée dans Mochi-B !", "#2d7a50");
     };
 
     document.getElementById('btn-export-a').onclick = () => brain.exportModel('A');
 
     document.getElementById('btn-wipe').onclick = async () => {
         if (isTraining || isArena || isProcessingMove) return;
-        if (!confirm("Remettre les cerveaux à zéro (Niveau 0) ?")) return;
+        if (!confirm("Faire oublier tout ce que Mochi-A et Mochi-B ont appris (Niveau 0) ?")) return;
         await brain.wipeAll();
         arenaStats = { aWins: 0, bWins: 0, draws: 0 };
         visualizer.rewardHistory = [];
         updateTelemetry();
         visualizer.drawNeuralNetwork(null);
         visualizer.drawLearningCurve();
-        showPopup("🧹 Cerveaux réinitialisés !", "#ff6b81");
+        showPopup("🧹 Mémoire toute propre !", "#d64568");
         startNewHumanGame();
     };
 }
@@ -610,7 +635,7 @@ function bindButtons() {
     initDOM();
     bindButtons();
     await brain.init();
-    document.getElementById('ia-status').innerText = "V6 Masterclass • Vision Thermique • Jauge d'Avantage & Audio";
+    document.getElementById('ia-status').innerText = "Édition Chibi Cozy • Neurones Prêts & Boîte à Musique Active";
     updateTelemetry();
     startNewHumanGame();
 })();
