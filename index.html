@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Neural Lab V5</title>
+    <title>Puissance 4 - Neural Lab V6</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -14,9 +14,13 @@
         <!-- EN-TÊTE -->
         <header class="top-bar">
             <div class="brand">
-                <h1>Neural Arena <span class="badge-v">V5 Alpha</span></h1>
+                <div class="title-row">
+                    <h1>Neural Arena <span class="badge-v">V6 Masterclass</span></h1>
+                    <button id="btn-sound" class="icon-btn" title="Activer/Couper les effets sonores">🔊</button>
+                </div>
                 <p id="ia-status">Initialisation de TensorFlow.js...</p>
             </div>
+
             <!-- Sélecteur de vitesse global -->
             <div class="speed-selector" title="Modifiez la vitesse d'entraînement en direct">
                 <span class="speed-label">⏱️ Vitesse :</span>
@@ -30,31 +34,35 @@
             </div>
         </header>
 
-        <!-- TÉLÉMÉTRIE GLOBALE -->
+        <!-- TÉLÉMÉTRIE & RANGS D'ÉVOLUTION -->
         <section class="telemetry-bar">
             <div class="stat-pill">
-                <span class="label">Expérience IA-A</span>
+                <span class="label">Cerveau IA-A</span>
                 <strong id="stat-age-a" class="val-a">0 partie</strong>
+                <span id="rank-a" class="rank-badge">🐣 Nouveau-né</span>
             </div>
             <div class="stat-pill">
-                <span class="label">Expérience IA-B</span>
+                <span class="label">Cerveau IA-B</span>
                 <strong id="stat-age-b" class="val-b">0 partie</strong>
+                <span id="rank-b" class="rank-badge">🐣 Nouveau-né</span>
             </div>
             <div class="stat-pill">
-                <span class="label">Souvenirs (Replay)</span>
+                <span class="label">Mémoire Active</span>
                 <strong id="stat-mem">0.0k / 50k</strong>
+                <span class="rank-badge">Symétrie ×2</span>
             </div>
             <div class="stat-pill">
-                <span class="label">Bilan Arène (A / Nul / B)</span>
+                <span class="label">Arène (A / Nul / B)</span>
                 <strong id="stat-winrate">0 / 0 / 0</strong>
+                <span id="stat-curriculum" class="rank-badge">Professeur Actif</span>
             </div>
         </section>
 
         <!-- NAVIGATION PAR ONGLETS -->
         <nav class="tabs-nav">
             <button class="tab-btn active" data-tab="tab-game">🎮 Plateau & Arène</button>
-            <button class="tab-btn" data-tab="tab-network">🧠 Rayons X du Réseau</button>
-            <button class="tab-btn" data-tab="tab-lab">🎛️ Laboratoire & Courbes</button>
+            <button class="tab-btn" data-tab="tab-network">🧠 Rayons X & Attention</button>
+            <button class="tab-btn" data-tab="tab-lab">🎛️ Laboratoire & Clonage</button>
         </nav>
 
         <!-- BANDEAU D'ACTIONS D'ENTRAÎNEMENT -->
@@ -67,43 +75,73 @@
             </div>
         </div>
 
-        <!-- ONGLET 1 : PLATEAU DE JEU -->
+        <!-- ==========================================
+             ONGLET 1 : PLATEAU DE JEU INTERACTIF
+             ========================================== -->
         <main id="tab-game" class="tab-content active">
+            <!-- Sélecteur de mode de jeu & Vision Thermique -->
+            <div class="mode-bar">
+                <div class="mode-select-group">
+                    <label for="game-mode">Mode :</label>
+                    <select id="game-mode" class="mode-select">
+                        <option value="HUMAN_FIRST">🔴 Humain (1er) vs 🤖 IA-A</option>
+                        <option value="AI_FIRST">🤖 IA-A (1er) vs 🔴 Humain</option>
+                        <option value="COACH_2P">👥 Duel 2 Joueurs + 🧠 Coach IA en direct</option>
+                        <option value="VS_TEACHER">🔴 Humain vs 🛡️ Bot Professeur (Gardien)</option>
+                    </select>
+                </div>
+                <button id="btn-thermal" class="btn-thermal active" title="Afficher les scores de l'IA directement sur les cases jouables">
+                    👁️ Vision Thermique : ON
+                </button>
+            </div>
+
             <div class="game-layout">
                 <div class="board-column">
+                    <!-- Visualiseur des 7 Q-Values -->
                     <div class="brain-panel">
                         <div class="brain-header">
-                            <span>🧠 Confiance par colonne (Q-Values)</span>
+                            <span>🧠 Évaluation par colonne (Q-Values)</span>
                             <span id="brain-mode-label" class="brain-tag">En attente</span>
                         </div>
                         <div id="brain-bars" class="brain-grid"></div>
                     </div>
 
-                    <div class="board-wrapper">
-                        <div id="xp-layer"></div>
-                        <div id="board" class="grid"></div>
+                    <!-- Plateau entouré de la jauge d'avantage façon Chess.com -->
+                    <div class="arena-stage">
+                        <div class="eval-bar-container" title="Jauge d'avantage estimée par l'IA">
+                            <div id="eval-bar-fill" class="eval-bar-fill"></div>
+                            <span id="eval-bar-text" class="eval-bar-text">0.0</span>
+                        </div>
+
+                        <div class="board-wrapper">
+                            <div id="xp-layer"></div>
+                            <div id="board" class="grid"></div>
+                        </div>
                     </div>
 
+                    <!-- Barre d'outils joueur -->
                     <div class="human-toolbar">
                         <button id="btn-reset" class="btn-primary">🔄 Nouvelle Partie</button>
                         <button id="btn-undo" class="btn-secondary" title="Annuler le dernier échange">⏪ Annuler coup</button>
-                        <button id="btn-hint" class="btn-secondary" title="Voir ce que l'IA-A jouerait à votre place">💡 Conseil IA</button>
+                        <button id="btn-hint" class="btn-secondary" title="Demander à l'IA-A le meilleur coup">💡 Conseil IA</button>
                         <button id="btn-wipe" class="btn-danger" title="Remettre les réseaux à zéro">🧹 Niveau 0</button>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- ONGLET 2 : VISUALISEUR DU RÉSEAU DE NEURONES -->
+        <!-- ==========================================
+             ONGLET 2 : RAYONS X & CARTE D'ATTENTION
+             ========================================== -->
         <section id="tab-network" class="tab-content">
             <div class="network-header">
                 <div>
-                    <h2>Architecture Bi-Canal AlphaZero & Double DQN</h2>
-                    <p>Activations en direct des 2 canaux d'entrée <code>[6×7×2]</code>, des filtres <code>Conv2D (3×3)</code> et des couches <code>Dense (256 → 128 → 7)</code>.</p>
+                    <h2>Radiographie du Réseau & Carte d'Attention Spatiale</h2>
+                    <p>Observez les 2 canaux <code>[6×7×2]</code>, la carte d'attention des filtres <code>Conv2D (3×3)</code> et les synapses actives.</p>
                 </div>
                 <div class="network-legend">
-                    <span class="legend-item"><i class="dot pos"></i> Activation (+)</span>
-                    <span class="legend-item"><i class="dot neg"></i> Danger / Ennemi (-)</span>
+                    <span class="legend-item"><i class="dot pos"></i> Synapse Positive (+)</span>
+                    <span class="legend-item"><i class="dot neg"></i> Inhibition / Danger (-)</span>
                 </div>
             </div>
 
@@ -113,28 +151,42 @@
 
             <div class="Inspector-cards">
                 <div class="info-card">
-                    <h3>👁️ Vision Bi-Canal [6×7×2] & Noyaux 3×3</h3>
-                    <p>Le Canal 0 isole les pions alliés et le Canal 1 isole les pions adverses, évitant toute annulation mathématique dans les filtres convolutifs.</p>
+                    <h3>🔥 Carte d'Attention Spatiale (Conv2D)</h3>
+                    <p>Le réseau balaie la grille avec 128 filtres 3×3. Les zones les plus lumineuses sur le schéma indiquent où le cerveau concentre son regard (menaces et croisements).</p>
                 </div>
                 <div class="info-card">
-                    <h3>♟️ Bellman Negamax & Propagation N-Step</h3>
-                    <p>L'équation soustrait la meilleure riposte adverse ($r - \gamma \max Q$) et propage la victoire ou la défaite sur tous les coups de la partie.</p>
+                    <h3>♟️ Équation de Bellman Negamax</h3>
+                    <p>Contrairement à un jeu solo, la valeur du plateau après un coup appartient à l'adversaire : l'IA cherche donc à maximiser $r - \gamma \max Q_{\text{adversaire}}$.</p>
                 </div>
             </div>
         </section>
 
-        <!-- ONGLET 3 : LABORATOIRE & COURBES -->
+        <!-- ==========================================
+             ONGLET 3 : LABORATOIRE, CLONAGE & EXPORT
+             ========================================== -->
         <section id="tab-lab" class="tab-content">
             <div class="lab-grid">
+                <!-- Expériences génétiques & Clonage -->
                 <div class="lab-card">
-                    <h3>📈 Courbe de progression (Cumul des récompenses par partie)</h3>
-                    <p class="lab-sub">Durant ses 500 premières parties solo, l'IA s'entraîne face au <strong>Bot Professeur (Gardien)</strong> pour apprendre rapidement à défendre.</p>
-                    <canvas id="chart-canvas" width="680" height="220"></canvas>
+                    <h3>🧬 Manipulation Génétique & Sauvegarde Fichier</h3>
+                    <p class="lab-sub">Clonez l'IA-A dans l'IA-B avant un entraînement pour faire s'affronter la « version jeune » et la « version surentraînée » dans l'Arène !</p>
+                    <div class="genetic-actions">
+                        <button id="btn-clone-a-to-b" class="btn-secondary">🧬 Cloner IA-A ➔ IA-B (Figer un témoin)</button>
+                        <button id="btn-export-a" class="btn-secondary">💾 Télécharger IA-A (.json/.weights)</button>
+                    </div>
                 </div>
 
+                <!-- Courbe d'apprentissage -->
                 <div class="lab-card">
-                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping normalisé)</h3>
-                    <p class="lab-sub">Ajustez les bonus (échelle Huber Loss `-10` à `+10`) pour modifier le comportement de l'IA en direct :</p>
+                    <h3>📈 Courbe de progression (Récompense cumulée par partie)</h3>
+                    <p class="lab-sub">La ligne pointillée marque l'équilibre (0). Au-dessus, l'IA enchaîne les parades et les victoires.</p>
+                    <canvas id="chart-canvas" width="680" height="210"></canvas>
+                </div>
+
+                <!-- Sliders de Reward Shaping -->
+                <div class="lab-card">
+                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping)</h3>
+                    <p class="lab-sub">Modifiez les récompenses en temps réel pour orienter l'apprentissage :</p>
 
                     <div class="slider-group">
                         <label>

@@ -18,7 +18,6 @@ class NeuralAgentManager {
         return model;
     }
 
-    // Réseau convolutif avec entrée bi-canal [6, 7, 2] (84 valeurs)
     createSequentialNetwork() {
         const m = tf.sequential();
         m.add(tf.layers.reshape({ targetShape: [6, 7, 2], inputShape: [84] }));
@@ -35,10 +34,10 @@ class NeuralAgentManager {
         return tf.model({
             inputs: seqModel.inputs,
             outputs: [
-                seqModel.layers[2].output,
-                seqModel.layers[4].output,
-                seqModel.layers[5].output,
-                seqModel.layers[6].output
+                seqModel.layers[2].output, // [1, 6, 7, 128]
+                seqModel.layers[4].output, // [1, 256]
+                seqModel.layers[5].output, // [1, 128]
+                seqModel.layers[6].output  // [1, 7]
             ]
         });
     }
@@ -61,6 +60,27 @@ class NeuralAgentManager {
         }
     }
 
+    async cloneAgent(fromKey = 'A', toKey = 'B') {
+        const src = this.agents[fromKey];
+        const dst = this.agents[toKey];
+        dst.model.setWeights(src.model.getWeights());
+        dst.target.setWeights(src.target.getWeights());
+        dst.games = src.games;
+        await this.checkpoint(toKey);
+    }
+
+    async exportModel(aiKey = 'A') {
+        await this.agents[aiKey].model.save(`downloads://cerveau-puissance4-ia-${aiKey.toLowerCase()}`);
+    }
+
+    getRankTitle(games) {
+        if (games < 30) return "🐣 Nouveau-né";
+        if (games < 150) return "👶 Apprenti";
+        if (games < 500) return "🛡️ Gardien";
+        if (games < 1200) return "🧠 Stratège";
+        return "👑 Grand Maître";
+    }
+
     async wipeAll() {
         for (const key of ['A', 'B']) {
             const ag = this.agents[key];
@@ -77,7 +97,6 @@ class NeuralAgentManager {
         }
     }
 
-    // Encodage bi-canal [6, 7, 2] : Canal 0 (Moi), Canal 1 (Adversaire)
     getNormalizedState(grid, perspectivePlayer) {
         const encoded = new Float32Array(84);
         const flat = grid.flat();
@@ -121,7 +140,17 @@ class NeuralAgentManager {
             }
 
             const [convOut, d256Out, d128Out, qOut] = ag.probe.predict(input);
+            const convArr = convOut.dataSync(); // 6 * 7 * 128 = 5376 valeurs
             const qArr = Array.from(qOut.dataSync());
+
+            // Calcul de la Carte d'Attention 6x7 (intensité moyenne des 128 filtres par case)
+            const attentionMap = new Array(42).fill(0);
+            for (let cellIdx = 0; cellIdx < 42; cellIdx++) {
+                let sum = 0;
+                const base = cellIdx * 128;
+                for (let f = 0; f < 128; f++) sum += convArr[base + f];
+                attentionMap[cellIdx] = sum / 128;
+            }
 
             const sample = (arr, count) => {
                 const res = [];
@@ -135,7 +164,8 @@ class NeuralAgentManager {
                 inspection: {
                     aiKey,
                     inputs: normState,
-                    convSample: sample(convOut.dataSync(), 12),
+                    attentionMap,
+                    convSample: sample(convArr, 12),
                     dense256Sample: sample(d256Out.dataSync(), 14),
                     dense128Sample: sample(d128Out.dataSync(), 10),
                     outputs: qArr
@@ -179,7 +209,6 @@ class NeuralAgentManager {
         while (memory.length > this.MEMORY_SIZE) memory.shift();
     }
 
-    // Entraînement avec Double DQN & Équation de Bellman Negamax
     async trainBatch(aiKey, batchSize = 128) {
         const ag = this.agents[aiKey];
         if (ag.memory.length < batchSize) return;
@@ -204,17 +233,17 @@ class NeuralAgentManager {
             batch.forEach((m, i) => {
                 let target = m.reward;
                 if (!m.done) {
-                    // Sélection du meilleur coup dans l'état suivant
                     let bestFutureAction = 0;
                     let bestVal = -Infinity;
                     for (let c = 0; c < 7; c++) {
-                        if (nextQMainValues[i][c] > bestVal) {
+                        // Vérifie que la colonne c du haut (index c*2 et c*2+1) est vide dans nextState
+                        const colFull = m.nextState[c * 2] !== 0 || m.nextState[c * 2 + 1] !== 0;
+                        if (!colFull && nextQMainValues[i][c] > bestVal) {
                             bestVal = nextQMainValues[i][c];
                             bestFutureAction = c;
                         }
                     }
-                    const futureValue = nextQTargetValues[i][bestFutureAction];
-                    // Negamax : ce qui est bon pour l'adversaire au tour suivant est soustrait
+                    const futureValue = Number.isFinite(bestVal) ? nextQTargetValues[i][bestFutureAction] : 0;
                     target = m.reward - this.GAMMA * futureValue;
                 }
                 qValues[i][m.action] = target;

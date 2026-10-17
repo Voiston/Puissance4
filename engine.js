@@ -23,7 +23,6 @@ class Connect4Engine {
         this.moveHistory = [];
     }
 
-    // Indispensable pour les simulations du Bot Professeur (getTeacherMove)
     cloneBoard(grid = this.board) {
         return grid.map(row => [...row]);
     }
@@ -36,27 +35,31 @@ class Connect4Engine {
         return valid;
     }
 
+    getLowestEmptyRow(col, grid = this.board) {
+        if (col < 0 || col >= this.COLS) return -1;
+        for (let r = this.ROWS - 1; r >= 0; r--) {
+            if (grid[r][col] === 0) return r;
+        }
+        return -1;
+    }
+
     isFull(grid = this.board) {
         return grid[0].every(cell => cell !== 0);
     }
 
     dropToken(col, player, grid = this.board, recordHistory = true) {
-        if (col < 0 || col >= this.COLS || grid[0][col] !== 0) return null;
-        for (let r = this.ROWS - 1; r >= 0; r--) {
-            if (grid[r][col] === 0) {
-                grid[r][col] = player;
-                if (recordHistory && grid === this.board) {
-                    this.moveHistory.push({ r, c: col, player });
-                }
-                return { r, c: col };
-            }
+        const r = this.getLowestEmptyRow(col, grid);
+        if (r === -1) return null;
+        grid[r][col] = player;
+        if (recordHistory && grid === this.board) {
+            this.moveHistory.push({ r, c: col, player });
         }
-        return null;
+        return { r, c: col };
     }
 
-    undoLastExchange() {
-        if (this.moveHistory.length < 2) return false;
-        for (let i = 0; i < 2; i++) {
+    undoLastExchange(steps = 2) {
+        if (this.moveHistory.length < steps) return false;
+        for (let i = 0; i < steps; i++) {
             const last = this.moveHistory.pop();
             if (last) this.board[last.r][last.c] = 0;
         }
@@ -107,13 +110,9 @@ class Connect4Engine {
             if (w.filter(v => v === player).length === 3 && w.filter(v => v === 0).length === 1) count++;
         };
         for (let i = 0; i < 4; i++) {
-            // Horizontal
             checkWindow(r, col-3+i, r, col-2+i, r, col-1+i, r, col+i);
-            // Vertical (corrigé pour inclure la case vide au-dessus des 3 pions)
             checkWindow(r-3+i, col, r-2+i, col, r-1+i, col, r+i, col);
-            // Diagonale descendante
             checkWindow(r-3+i, col-3+i, r-2+i, col-2+i, r-1+i, col-1+i, r+i, col+i);
-            // Diagonale montante
             checkWindow(r-3+i, col+3-i, r-2+i, col+2-i, r-1+i, col+1-i, r+i, col-i);
         }
         return count > 0;
@@ -148,20 +147,17 @@ class Connect4Engine {
         return { reward, popup };
     }
 
-    // --- SPARRING PARTNER (BOT PROFESSEUR) ---
     getTeacherMove(player, difficulty = 'GUARDIAN') {
         const valid = this.getValidColumns();
         if (valid.length === 0) return undefined;
         const opponent = player === 1 ? 2 : 1;
 
-        // 1. Gagner immédiatement si possible
         for (const c of valid) {
             const temp = this.cloneBoard();
             this.dropToken(c, player, temp, false);
             if (this.checkWinner(player, temp)) return c;
         }
 
-        // 2. Bloquer la victoire imminente de l'adversaire (Niveau Gardien)
         if (difficulty === 'GUARDIAN') {
             for (const c of valid) {
                 const temp = this.cloneBoard();
@@ -170,7 +166,6 @@ class Connect4Engine {
             }
         }
 
-        // 3. Jouer au centre par défaut ou au hasard
         if (valid.includes(3) && Math.random() < 0.6) return 3;
         return valid[Math.floor(Math.random() * valid.length)];
     }
