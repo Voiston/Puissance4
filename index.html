@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Neural Arena V2</title>
+    <title>Puissance 4 - Neural Arena V3 (Édition Pédagogique)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
 
     <style>
-        /* --- VARIABLES & RESET --- */
         :root {
             --bg-color: #12121c;
             --panel-bg: #1e1e2f;
@@ -18,13 +16,12 @@
             --cell-empty: #161622;
             --player-a: #ff4757; /* Rouge néon */
             --player-b: #ffa502; /* Jaune néon */
+            --accent-green: #2ed573;
+            --accent-purple: #5352ed;
             --text-main: #f1f2f6;
             --text-muted: #a4b0be;
         }
-/* Classes à ajouter dans ton <style> */
-.status-win-human { color: var(--player-a) !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.5); }
-.status-win-ai { color: var(--player-b) !important; text-shadow: 0 0 10px rgba(255, 165, 2, 0.5); }
-.status-thinking { font-style: italic; opacity: 0.8; }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -40,37 +37,38 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 15px;
         }
 
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 540px;
             background: var(--panel-bg);
-            padding: 25px;
+            padding: 22px;
             border-radius: 20px;
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            position: relative;
         }
 
-        /* --- EN-TÊTE --- */
+        /* --- EN-TÊTE & TÉLÉMÉTRIE --- */
         header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
 
         h1 {
-            font-size: 1.8rem;
+            font-size: 1.7rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 2px;
             background: -webkit-linear-gradient(45deg, var(--player-a), var(--player-b));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
 
         #ia-status {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
             background: rgba(255, 255, 255, 0.05);
             padding: 4px 12px;
@@ -78,24 +76,169 @@
             display: inline-block;
         }
 
+        .telemetry {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 0.95rem;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+
         /* --- STATUT DU JEU --- */
         .status-panel {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px;
             border-radius: 12px;
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             border: 1px solid rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
         }
 
         #status {
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 600;
             color: #ffffff;
-            transition: color 0.3s;
+            transition: all 0.3s;
         }
 
-        /* --- LE PLATEAU (GRILLE) --- */
+        .status-win-human { color: var(--player-a) !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.5); }
+        .status-win-ai { color: var(--player-b) !important; text-shadow: 0 0 10px rgba(255, 165, 2, 0.5); }
+        .status-thinking { font-style: italic; opacity: 0.85; color: #70a1ff !important; }
+
+        /* --- VISUALISEUR DE CERVEAU (JAUGES Q-VALUES) --- */
+        .brain-panel {
+            margin-bottom: 8px;
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .brain-title {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brain-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            align-items: end;
+            height: 52px;
+        }
+
+        .q-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 100%;
+        }
+
+        .q-score {
+            font-size: 0.68rem;
+            font-weight: 600;
+            margin-bottom: 3px;
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+
+        .q-bar-track {
+            width: 100%;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            display: flex;
+            align-items: flex-end;
+            overflow: hidden;
+            padding: 2px;
+        }
+
+        .q-bar-fill {
+            width: 100%;
+            height: 15%;
+            background: #57606f;
+            border-radius: 4px;
+            transition: height 0.25s ease-out, background-color 0.25s ease;
+        }
+
+        .q-col.best-choice .q-score {
+            color: #ffffff;
+            font-weight: 800;
+        }
+
+        .q-col.best-choice .q-bar-track {
+            box-shadow: 0 0 8px rgba(46, 213, 115, 0.4);
+            border: 1px solid rgba(46, 213, 115, 0.6);
+        }
+
+        /* --- LE PLATEAU (GRILLE) & POPUPS XP --- */
+        .board-wrapper {
+            position: relative;
+            margin-bottom: 18px;
+        }
+
+        #xp-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        .xp-popup {
+            position: absolute;
+            left: 50%;
+            top: 45%;
+            transform: translate(-50%, -50%);
+            font-size: 0.95rem;
+            font-weight: 800;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(18, 18, 28, 0.92);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+            white-space: nowrap;
+            animation: floatUp 1.4s ease-out forwards;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 0; transform: translate(-50%, 10px) scale(0.8); }
+            15% { opacity: 1; transform: translate(-50%, -10px) scale(1.05); }
+            80% { opacity: 1; transform: translate(-50%, -45px) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -65px) scale(0.95); }
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
@@ -104,7 +247,6 @@
             padding: 15px;
             border-radius: 15px;
             box-shadow: inset 0 10px 20px rgba(0, 0, 0, 0.5);
-            margin-bottom: 25px;
         }
 
         .cell {
@@ -113,16 +255,18 @@
             border-radius: 50%;
             cursor: pointer;
             box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255, 255, 255, 0.05);
-            transition: all 0.2s ease-in-out;
+            transition: transform 0.15s ease, background-color 0.2s ease;
+            position: relative;
         }
 
-        /* Effet au survol uniquement sur les cases vides */
-        .cell:not(.player):not(.ai):hover {
-            background: #232336;
-            transform: scale(0.95);
+        /* Pion fantôme au survol d'une colonne */
+        .cell.ghost-preview {
+            background: rgba(255, 71, 87, 0.28);
+            box-shadow: inset 0 0 12px rgba(255, 71, 87, 0.5);
+            transform: scale(0.92);
         }
 
-        /* Les Pions avec effet 3D (Gradients) */
+        /* Pions avec effet 3D */
         .cell.player {
             background: radial-gradient(circle at 30% 30%, #ff6b81, var(--player-a));
             box-shadow: 0 0 15px rgba(255, 71, 87, 0.4), inset 0 -5px 10px rgba(0,0,0,0.4);
@@ -135,6 +279,28 @@
             cursor: default;
         }
 
+        /* Animation de chute uniquement sur le dernier pion joué */
+        .cell.drop-anim {
+            animation: dropToken 0.32s cubic-bezier(0.25, 0.9, 0.35, 1.15);
+        }
+
+        @keyframes dropToken {
+            0% { transform: translateY(-260px) scale(0.9); opacity: 0.5; }
+            80% { transform: translateY(6px) scale(1.03); opacity: 1; }
+            100% { transform: translateY(0) scale(1); }
+        }
+
+        /* Mise en valeur des 4 pions gagnants */
+        .cell.win-cell {
+            animation: pulseWin 0.7s infinite alternate ease-in-out;
+            z-index: 2;
+        }
+
+        @keyframes pulseWin {
+            from { transform: scale(1); filter: brightness(1); box-shadow: 0 0 15px #ffffff; }
+            to { transform: scale(1.12); filter: brightness(1.35); box-shadow: 0 0 28px #ffffff; }
+        }
+
         /* --- CONTRÔLES & BOUTONS --- */
         .controls {
             display: grid;
@@ -143,8 +309,8 @@
         }
 
         button {
-            padding: 12px;
-            font-size: 0.9rem;
+            padding: 11px 12px;
+            font-size: 0.85rem;
             font-weight: 600;
             border: none;
             border-radius: 10px;
@@ -154,19 +320,32 @@
             text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
 
-        button:active { transform: scale(0.95); }
-        button:hover { filter: brightness(1.15); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        button:active { transform: scale(0.96); }
+        button:hover { filter: brightness(1.12); box-shadow: 0 5px 15px rgba(0,0,0,0.25); }
 
-        #btn-reset { background: #2ed573; grid-column: span 2; } /* Vert */
-        #btn-train-a { background: var(--player-a); } /* Rouge */
-        #btn-train-b { background: var(--player-b); } /* Jaune */
-        #btn-arena { background: #5352ed; grid-column: span 2; font-size: 1rem; padding: 15px; } /* Bleu violet */
+        #btn-reset { background: var(--accent-green); grid-column: span 2; font-size: 0.95rem; }
+        #btn-train-a { background: var(--player-a); }
+        #btn-train-b { background: var(--player-b); }
+        #btn-arena { background: var(--accent-purple); grid-column: span 2; font-size: 0.95rem; padding: 13px; }
+        
+        .pedagogy-controls {
+            grid-column: span 2;
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 10px;
+            margin-top: 4px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
 
-        /* Responsive : Ajustements pour les petits écrans */
-        @media (max-width: 400px) {
-            .grid { gap: 6px; padding: 10px; }
-            .controls { display: flex; flex-direction: column; }
-            #btn-reset, #btn-arena { width: 100%; }
+        #btn-speed { background: #3742fa; font-size: 0.8rem; }
+        #btn-speed.spectator { background: #eccc68; color: #1e1e2f; text-shadow: none; }
+        #btn-wipe { background: #2f3542; color: #ff6b81; border: 1px solid rgba(255, 107, 129, 0.3); font-size: 0.8rem; }
+
+        @media (max-width: 440px) {
+            .grid, .brain-grid { gap: 6px; }
+            .grid { padding: 10px; }
+            .controls, .pedagogy-controls { display: flex; flex-direction: column; }
         }
     </style>
 </head>
@@ -175,20 +354,54 @@
     <div class="container">
         <header>
             <h1>Neural Arena</h1>
-            <span id="ia-status">Vérification des réseaux...</span>
+            <span id="ia-status">Initialisation des réseaux neuronaux...</span>
         </header>
 
-        <div class="status-panel">
-            <div id="status">Initialisation...</div>
+        <!-- Télémétrie pédagogique -->
+        <div class="telemetry">
+            <div class="stat-card">
+                <div class="stat-label">Expérience IA-A</div>
+                <div class="stat-value" id="stat-age-a" style="color: var(--player-b);">0 partie</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Mémoire Active</div>
+                <div class="stat-value" id="stat-mem">0 souvenir</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Expérience IA-B</div>
+                <div class="stat-value" id="stat-age-b" style="color: #70a1ff;">0 partie</div>
+            </div>
         </div>
 
-        <div id="board" class="grid"></div>
+        <div class="status-panel">
+            <div id="status">Préparation du plateau...</div>
+        </div>
+
+        <!-- Visualiseur de Q-Values (Pensées de l'IA) -->
+        <div class="brain-panel">
+            <div class="brain-title">
+                <span>🧠 Lecture du cerveau en direct (Confiance par colonne)</span>
+                <span id="brain-mode-label">En attente</span>
+            </div>
+            <div id="brain-bars" class="brain-grid"></div>
+        </div>
+
+        <!-- Plateau de jeu + Calque d'animations XP -->
+        <div class="board-wrapper">
+            <div id="xp-layer"></div>
+            <div id="board" class="grid"></div>
+        </div>
 
         <div class="controls">
-            <button id="btn-reset">Jouer vs IA-A (Rouge)</button>
-            <button id="btn-train-a">Entraîner IA-A</button>
-            <button id="btn-train-b">Entraîner IA-B</button>
+            <button id="btn-reset">🎮 Jouer contre l'IA-A</button>
+            <button id="btn-train-a">💪 Entraîner IA-A (Solo)</button>
+            <button id="btn-train-b">💪 Entraîner IA-B (Solo)</button>
             <button id="btn-arena">⚔️ ARÈNE : IA-A vs IA-B ⚔️</button>
+
+            <div class="pedagogy-controls">
+                <button id="btn-speed">⚡ Vitesse : Mode Turbo</button>
+                <button id="btn-wipe">🧹 Cerveaux Niveau 0</button>
+            </div>
         </div>
     </div>
 
