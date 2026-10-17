@@ -3,408 +3,190 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Neural Arena V3 (Édition Pédagogique)</title>
-    
+    <title>Puissance 4 - Neural Lab V4</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
-
-    <style>
-        :root {
-            --bg-color: #12121c;
-            --panel-bg: #1e1e2f;
-            --board-bg: #2a2a40;
-            --cell-empty: #161622;
-            --player-a: #ff4757; /* Rouge néon */
-            --player-b: #ffa502; /* Jaune néon */
-            --accent-green: #2ed573;
-            --accent-purple: #5352ed;
-            --text-main: #f1f2f6;
-            --text-muted: #a4b0be;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Poppins', sans-serif;
-            user-select: none;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 15px;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 540px;
-            background: var(--panel-bg);
-            padding: 22px;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
-            position: relative;
-        }
-
-        /* --- EN-TÊTE & TÉLÉMÉTRIE --- */
-        header {
-            text-align: center;
-            margin-bottom: 12px;
-        }
-
-        h1 {
-            font-size: 1.7rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            background: -webkit-linear-gradient(45deg, var(--player-a), var(--player-b));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 4px;
-        }
-
-        #ia-status {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            background: rgba(255, 255, 255, 0.05);
-            padding: 4px 12px;
-            border-radius: 15px;
-            display: inline-block;
-        }
-
-        .telemetry {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-
-        .stat-card {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            padding: 8px;
-            text-align: center;
-        }
-
-        .stat-label {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-value {
-            font-size: 0.95rem;
-            font-weight: 800;
-            margin-top: 2px;
-        }
-
-        /* --- STATUT DU JEU --- */
-        .status-panel {
-            background: rgba(0, 0, 0, 0.25);
-            padding: 12px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            position: relative;
-            overflow: hidden;
-        }
-
-        #status {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #ffffff;
-            transition: all 0.3s;
-        }
-
-        .status-win-human { color: var(--player-a) !important; text-shadow: 0 0 10px rgba(255, 71, 87, 0.5); }
-        .status-win-ai { color: var(--player-b) !important; text-shadow: 0 0 10px rgba(255, 165, 2, 0.5); }
-        .status-thinking { font-style: italic; opacity: 0.85; color: #70a1ff !important; }
-
-        /* --- VISUALISEUR DE CERVEAU (JAUGES Q-VALUES) --- */
-        .brain-panel {
-            margin-bottom: 8px;
-            padding: 8px 15px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.04);
-        }
-
-        .brain-title {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            text-align: center;
-            margin-bottom: 6px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .brain-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-            align-items: end;
-            height: 52px;
-        }
-
-        .q-col {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-end;
-            height: 100%;
-        }
-
-        .q-score {
-            font-size: 0.68rem;
-            font-weight: 600;
-            margin-bottom: 3px;
-            color: var(--text-muted);
-            transition: color 0.2s;
-        }
-
-        .q-bar-track {
-            width: 100%;
-            height: 32px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            display: flex;
-            align-items: flex-end;
-            overflow: hidden;
-            padding: 2px;
-        }
-
-        .q-bar-fill {
-            width: 100%;
-            height: 15%;
-            background: #57606f;
-            border-radius: 4px;
-            transition: height 0.25s ease-out, background-color 0.25s ease;
-        }
-
-        .q-col.best-choice .q-score {
-            color: #ffffff;
-            font-weight: 800;
-        }
-
-        .q-col.best-choice .q-bar-track {
-            box-shadow: 0 0 8px rgba(46, 213, 115, 0.4);
-            border: 1px solid rgba(46, 213, 115, 0.6);
-        }
-
-        /* --- LE PLATEAU (GRILLE) & POPUPS XP --- */
-        .board-wrapper {
-            position: relative;
-            margin-bottom: 18px;
-        }
-
-        #xp-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
-            overflow: hidden;
-        }
-
-        .xp-popup {
-            position: absolute;
-            left: 50%;
-            top: 45%;
-            transform: translate(-50%, -50%);
-            font-size: 0.95rem;
-            font-weight: 800;
-            padding: 6px 14px;
-            border-radius: 20px;
-            background: rgba(18, 18, 28, 0.92);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
-            white-space: nowrap;
-            animation: floatUp 1.4s ease-out forwards;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        @keyframes floatUp {
-            0% { opacity: 0; transform: translate(-50%, 10px) scale(0.8); }
-            15% { opacity: 1; transform: translate(-50%, -10px) scale(1.05); }
-            80% { opacity: 1; transform: translate(-50%, -45px) scale(1); }
-            100% { opacity: 0; transform: translate(-50%, -65px) scale(0.95); }
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-            background: var(--board-bg);
-            padding: 15px;
-            border-radius: 15px;
-            box-shadow: inset 0 10px 20px rgba(0, 0, 0, 0.5);
-        }
-
-        .cell {
-            aspect-ratio: 1/1;
-            background: var(--cell-empty);
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255, 255, 255, 0.05);
-            transition: transform 0.15s ease, background-color 0.2s ease;
-            position: relative;
-        }
-
-        /* Pion fantôme au survol d'une colonne */
-        .cell.ghost-preview {
-            background: rgba(255, 71, 87, 0.28);
-            box-shadow: inset 0 0 12px rgba(255, 71, 87, 0.5);
-            transform: scale(0.92);
-        }
-
-        /* Pions avec effet 3D */
-        .cell.player {
-            background: radial-gradient(circle at 30% 30%, #ff6b81, var(--player-a));
-            box-shadow: 0 0 15px rgba(255, 71, 87, 0.4), inset 0 -5px 10px rgba(0,0,0,0.4);
-            cursor: default;
-        }
-
-        .cell.ai {
-            background: radial-gradient(circle at 30% 30%, #ffc048, var(--player-b));
-            box-shadow: 0 0 15px rgba(255, 165, 2, 0.4), inset 0 -5px 10px rgba(0,0,0,0.4);
-            cursor: default;
-        }
-
-        /* Animation de chute uniquement sur le dernier pion joué */
-        .cell.drop-anim {
-            animation: dropToken 0.32s cubic-bezier(0.25, 0.9, 0.35, 1.15);
-        }
-
-        @keyframes dropToken {
-            0% { transform: translateY(-260px) scale(0.9); opacity: 0.5; }
-            80% { transform: translateY(6px) scale(1.03); opacity: 1; }
-            100% { transform: translateY(0) scale(1); }
-        }
-
-        /* Mise en valeur des 4 pions gagnants */
-        .cell.win-cell {
-            animation: pulseWin 0.7s infinite alternate ease-in-out;
-            z-index: 2;
-        }
-
-        @keyframes pulseWin {
-            from { transform: scale(1); filter: brightness(1); box-shadow: 0 0 15px #ffffff; }
-            to { transform: scale(1.12); filter: brightness(1.35); box-shadow: 0 0 28px #ffffff; }
-        }
-
-        /* --- CONTRÔLES & BOUTONS --- */
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        button {
-            padding: 11px 12px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            color: white;
-            transition: transform 0.1s, filter 0.2s, box-shadow 0.2s;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-        }
-
-        button:active { transform: scale(0.96); }
-        button:hover { filter: brightness(1.12); box-shadow: 0 5px 15px rgba(0,0,0,0.25); }
-
-        #btn-reset { background: var(--accent-green); grid-column: span 2; font-size: 0.95rem; }
-        #btn-train-a { background: var(--player-a); }
-        #btn-train-b { background: var(--player-b); }
-        #btn-arena { background: var(--accent-purple); grid-column: span 2; font-size: 0.95rem; padding: 13px; }
-        
-        .pedagogy-controls {
-            grid-column: span 2;
-            display: grid;
-            grid-template-columns: 1.3fr 1fr;
-            gap: 10px;
-            margin-top: 4px;
-            padding-top: 10px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        #btn-speed { background: #3742fa; font-size: 0.8rem; }
-        #btn-speed.spectator { background: #eccc68; color: #1e1e2f; text-shadow: none; }
-        #btn-wipe { background: #2f3542; color: #ff6b81; border: 1px solid rgba(255, 107, 129, 0.3); font-size: 0.8rem; }
-
-        @media (max-width: 440px) {
-            .grid, .brain-grid { gap: 6px; }
-            .grid { padding: 10px; }
-            .controls, .pedagogy-controls { display: flex; flex-direction: column; }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <h1>Neural Arena</h1>
-            <span id="ia-status">Initialisation des réseaux neuronaux...</span>
+    <div class="app-shell">
+        <!-- EN-TÊTE -->
+        <header class="top-bar">
+            <div class="brand">
+                <h1>Neural Arena <span class="badge-v">V4 Lab</span></h1>
+                <p id="ia-status">Initialisation de TensorFlow.js...</p>
+            </div>
+            <!-- Sélecteur de vitesse global (actif en permanence) -->
+            <div class="speed-selector" title="Modifiez la vitesse d'entraînement en direct">
+                <span class="speed-label">⏱️ Vitesse :</span>
+                <div class="speed-buttons">
+                    <button class="speed-btn active" data-speed="1">x1</button>
+                    <button class="speed-btn" data-speed="5">x5</button>
+                    <button class="speed-btn" data-speed="10">x10</button>
+                    <button class="speed-btn" data-speed="20">x20</button>
+                    <button class="speed-btn turbo" data-speed="MAX">⚡ MAX</button>
+                </div>
+            </div>
         </header>
 
-        <!-- Télémétrie pédagogique -->
-        <div class="telemetry">
-            <div class="stat-card">
-                <div class="stat-label">Expérience IA-A</div>
-                <div class="stat-value" id="stat-age-a" style="color: var(--player-b);">0 partie</div>
+        <!-- TÉLÉMÉTRIE GLOBALE -->
+        <section class="telemetry-bar">
+            <div class="stat-pill">
+                <span class="label">Expérience IA-A</span>
+                <strong id="stat-age-a" class="val-a">0 partie</strong>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Mémoire Active</div>
-                <div class="stat-value" id="stat-mem">0 souvenir</div>
+            <div class="stat-pill">
+                <span class="label">Expérience IA-B</span>
+                <strong id="stat-age-b" class="val-b">0 partie</strong>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Expérience IA-B</div>
-                <div class="stat-value" id="stat-age-b" style="color: #70a1ff;">0 partie</div>
+            <div class="stat-pill">
+                <span class="label">Souvenirs (Replay)</span>
+                <strong id="stat-mem">0 / 50k</strong>
+            </div>
+            <div class="stat-pill">
+                <span class="label">Bilan Arène (A / Nul / B)</span>
+                <strong id="stat-winrate">0 / 0 / 0</strong>
+            </div>
+        </section>
+
+        <!-- NAVIGATION PAR ONGLETS -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="tab-game">🎮 Plateau & Arène</button>
+            <button class="tab-btn" data-tab="tab-network">🧠 Rayons X du Réseau</button>
+            <button class="tab-btn" data-tab="tab-lab">🎛️ Laboratoire & Courbes</button>
+        </nav>
+
+        <!-- BANDEAU DE STATUT & CONTRÔLES D'ENTRAÎNEMENT GLOBAUX -->
+        <div class="action-ribbon">
+            <div id="status" class="status-text">Préparation du plateau...</div>
+            <div class="training-actions">
+                <button id="btn-train-a" class="btn-train-a">💪 Entraîner IA-A</button>
+                <button id="btn-train-b" class="btn-train-b">💪 Entraîner IA-B</button>
+                <button id="btn-arena" class="btn-arena">⚔️ Arène (A vs B)</button>
             </div>
         </div>
 
-        <div class="status-panel">
-            <div id="status">Préparation du plateau...</div>
-        </div>
+        <!-- ==========================================
+             ONGLET 1 : PLATEAU DE JEU & JAUGES Q-VALUES
+             ========================================== -->
+        <main id="tab-game" class="tab-content active">
+            <div class="game-layout">
+                <div class="board-column">
+                    <!-- Visualiseur des 7 Q-Values -->
+                    <div class="brain-panel">
+                        <div class="brain-header">
+                            <span>🧠 Confiance par colonne (Q-Values)</span>
+                            <span id="brain-mode-label" class="brain-tag">En attente</span>
+                        </div>
+                        <div id="brain-bars" class="brain-grid"></div>
+                    </div>
 
-        <!-- Visualiseur de Q-Values (Pensées de l'IA) -->
-        <div class="brain-panel">
-            <div class="brain-title">
-                <span>🧠 Lecture du cerveau en direct (Confiance par colonne)</span>
-                <span id="brain-mode-label">En attente</span>
+                    <!-- Grille Puissance 4 -->
+                    <div class="board-wrapper">
+                        <div id="xp-layer"></div>
+                        <div id="board" class="grid"></div>
+                    </div>
+
+                    <!-- Outils de jeu humain -->
+                    <div class="human-toolbar">
+                        <button id="btn-reset" class="btn-primary">🔄 Nouvelle Partie</button>
+                        <button id="btn-undo" class="btn-secondary" title="Annuler le dernier échange pour tester un autre coup">⏪ Annuler mon coup</button>
+                        <button id="btn-hint" class="btn-secondary" title="Voir ce que l'IA-A jouerait à votre place">💡 Conseil IA</button>
+                        <button id="btn-wipe" class="btn-danger" title="Remettre les réseaux à zéro">🧹 Niveau 0</button>
+                    </div>
+                </div>
             </div>
-            <div id="brain-bars" class="brain-grid"></div>
-        </div>
+        </main>
 
-        <!-- Plateau de jeu + Calque d'animations XP -->
-        <div class="board-wrapper">
-            <div id="xp-layer"></div>
-            <div id="board" class="grid"></div>
-        </div>
-
-        <div class="controls">
-            <button id="btn-reset">🎮 Jouer contre l'IA-A</button>
-            <button id="btn-train-a">💪 Entraîner IA-A (Solo)</button>
-            <button id="btn-train-b">💪 Entraîner IA-B (Solo)</button>
-            <button id="btn-arena">⚔️ ARÈNE : IA-A vs IA-B ⚔️</button>
-
-            <div class="pedagogy-controls">
-                <button id="btn-speed">⚡ Vitesse : Mode Turbo</button>
-                <button id="btn-wipe">🧹 Cerveaux Niveau 0</button>
+        <!-- ==========================================
+             ONGLET 2 : VISUALISEUR DU RÉSEAU DE NEURONES
+             ========================================== -->
+        <section id="tab-network" class="tab-content">
+            <div class="network-header">
+                <div>
+                    <h2>Architecture Deep Q-Network en temps réel</h2>
+                    <p>Observez les activations réelles des couches <code>Conv2D (128)</code> et <code>Dense (256 → 128 → 7)</code> à chaque coup joué.</p>
+                </div>
+                <div class="network-legend">
+                    <span class="legend-item"><i class="dot pos"></i> Activation forte (+)</span>
+                    <span class="legend-item"><i class="dot neg"></i> Inhibition / Danger (-)</span>
+                </div>
             </div>
-        </div>
+
+            <div class="canvas-card">
+                <canvas id="nn-canvas" width="760" height="420"></canvas>
+            </div>
+
+            <div class="Inspector-cards">
+                <div class="info-card">
+                    <h3>👁️ Couches de Vision Spatiale (2× Conv2D 4×4)</h3>
+                    <p>Balayent la grille avec des fenêtres de 4×4 cases pour détecter les alignements horizontaux, verticaux et diagonaux, peu importe leur position.</p>
+                </div>
+                <div class="info-card">
+                    <h3>⚖️ Double Cerveau (Modèle Principal + Cible)</h3>
+                    <p>Le réseau principal choisit la meilleure colonne tandis que le réseau cible stabilise l'estimation des récompenses futures ($\gamma = 0.99$).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             ONGLET 3 : LABORATOIRE & COURBES
+             ========================================== -->
+        <section id="tab-lab" class="tab-content">
+            <div class="lab-grid">
+                <!-- Courbe d'apprentissage -->
+                <div class="lab-card">
+                    <h3>📈 Courbe de progression (Récompense moyenne par partie)</h3>
+                    <p class="lab-sub">Plus la courbe monte, plus l'IA réalise de parades, d'alignements et de victoires.</p>
+                    <canvas id="chart-canvas" width="680" height="220"></canvas>
+                </div>
+
+                <!-- Sliders de Reward Shaping -->
+                <div class="lab-card">
+                    <h3>🧪 Sculpter la personnalité de l'IA (Reward Shaping)</h3>
+                    <p class="lab-sub">Ajustez les récompenses données à l'IA pour orienter son style de jeu pendant l'entraînement :</p>
+
+                    <div class="slider-group">
+                        <label>
+                            <span>🛡️ Instinct de survie (Parade décisive)</span>
+                            <strong id="val-reward-block">+50 XP</strong>
+                        </label>
+                        <input type="range" id="slider-block" min="0" max="120" step="5" value="50">
+                    </div>
+
+                    <div class="slider-group">
+                        <label>
+                            <span>⚡ Agressivité (Aligner 3 pions)</span>
+                            <strong id="val-reward-three">+10 XP</strong>
+                        </label>
+                        <input type="range" id="slider-three" min="0" max="50" step="2" value="10">
+                    </div>
+
+                    <div class="slider-group">
+                        <label>
+                            <span>🎯 Contrôle du centre (Colonne 4)</span>
+                            <strong id="val-reward-center">+2 XP</strong>
+                        </label>
+                        <input type="range" id="slider-center" min="0" max="15" step="1" value="2">
+                    </div>
+
+                    <div class="slider-group">
+                        <label>
+                            <span>🎲 Curiosité minimale (Exploration $\epsilon$)</span>
+                            <strong id="val-epsilon">10 %</strong>
+                        </label>
+                        <input type="range" id="slider-epsilon" min="0" max="50" step="2" value="10">
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <script src="game.js"></script>
+    <!-- Chargement modulaire (compatible double-clic local file:// et serveur web) -->
+    <script src="engine.js"></script>
+    <script src="ai-brain.js"></script>
+    <script src="visualizer.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
