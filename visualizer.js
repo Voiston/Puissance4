@@ -2,15 +2,6 @@ class SoundFX {
     constructor() {
         this.enabled = true;
         this.ctx = null;
-		levelUp() {
-        [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) =>
-            setTimeout(() => this.playTone(f, 0.22, 'triangle', 0.08), i * 85)
-        );
-    }
-    save() {
-        this.playTone(880, 0.08, 'sine', 0.06);
-        setTimeout(() => this.playTone(1174.66, 0.14, 'sine', 0.06), 70);
-    }
     }
 
     initContext() {
@@ -42,6 +33,15 @@ class SoundFX {
     reward() { this.playTone(587, 0.12, 'sine', 0.06); setTimeout(() => this.playTone(784, 0.16, 'sine', 0.06), 80); }
     punish() { this.playTone(293, 0.18, 'triangle', 0.06); setTimeout(() => this.playTone(261, 0.22, 'triangle', 0.06), 90); }
     win() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.playTone(f, 0.18, 'sine', 0.07), i * 90)); }
+    levelUp() {
+        [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) =>
+            setTimeout(() => this.playTone(f, 0.22, 'triangle', 0.08), i * 85)
+        );
+    }
+    save() {
+        this.playTone(880, 0.08, 'sine', 0.06);
+        setTimeout(() => this.playTone(1174.66, 0.14, 'sine', 0.06), 70);
+    }
 }
 
 class NeuralVisualizer {
