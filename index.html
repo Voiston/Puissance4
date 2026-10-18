@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Puissance 4 - Chibi Neural Lab</title>
+    <title>Puissance 4 - Chibi Neural RPG</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -11,19 +11,19 @@
 <body>
 
     <div class="app-shell">
-        <!-- EN-TÊTE DOUX -->
+        <!-- EN-TÊTE JEU VIDÉO -->
         <header class="top-bar">
             <div class="brand">
                 <div class="title-row">
-                    <h1>🍓 Chibi Connect <span class="badge-v">Cozy AI Lab</span></h1>
+                    <h1>🍓 Chibi Connect <span class="badge-v">Neural RPG</span></h1>
                     <button id="btn-sound" class="icon-btn" title="Activer/Couper la boîte à musique">🔊</button>
                 </div>
                 <p id="ia-status">Préparation des petits neurones...</p>
             </div>
 
-            <!-- Sélecteur de vitesse façon bonbons pastel -->
+            <!-- Sélecteur de vitesse -->
             <div class="speed-selector" title="Modifiez le rythme d'apprentissage">
-                <span class="speed-label">⏱️ Rythme :</span>
+                <span class="speed-label">⏱️ Vitesse :</span>
                 <div class="speed-buttons">
                     <button class="speed-btn active" data-speed="1">x1</button>
                     <button class="speed-btn" data-speed="5">x5</button>
@@ -34,35 +34,62 @@
             </div>
         </header>
 
-        <!-- TÉLÉMÉTRIE PASTEL -->
-        <section class="telemetry-bar">
-            <div class="stat-pill pill-a">
-                <span class="label">Mochi-A (Miel)</span>
-                <strong id="stat-age-a" class="val-a">0 partie</strong>
-                <span id="rank-a" class="rank-badge">🐣 Nouveau-né</span>
+        <!-- HUD RPG : FICHES DE PERSONNAGES AVEC BARRES D'XP -->
+        <section class="rpg-hud">
+            <div class="hero-card hero-a">
+                <div class="hero-top">
+                    <div>
+                        <span class="hero-tag">🍯 Combattant Principal</span>
+                        <h3 id="name-a">Mochi-A</h3>
+                    </div>
+                    <span id="lvl-a" class="lvl-badge">Niv. 1</span>
+                </div>
+                <div class="xp-bar-track">
+                    <div id="xp-fill-a" class="xp-bar-fill fill-a" style="width: 8%;"></div>
+                </div>
+                <div class="hero-bottom">
+                    <span id="rank-a" class="rank-badge">🐣 Œuf Curieux</span>
+                    <strong id="stat-age-a" class="xp-count">0 / 30 XP</strong>
+                </div>
             </div>
-            <div class="stat-pill pill-b">
-                <span class="label">Mochi-B (Lavande)</span>
-                <strong id="stat-age-b" class="val-b">0 partie</strong>
-                <span id="rank-b" class="rank-badge">🐣 Nouveau-né</span>
+
+            <div class="hero-card hero-b">
+                <div class="hero-top">
+                    <div>
+                        <span class="hero-tag">🫐 Sparring Partner</span>
+                        <h3 id="name-b">Mochi-B</h3>
+                    </div>
+                    <span id="lvl-b" class="lvl-badge">Niv. 1</span>
+                </div>
+                <div class="xp-bar-track">
+                    <div id="xp-fill-b" class="xp-bar-fill fill-b" style="width: 8%;"></div>
+                </div>
+                <div class="hero-bottom">
+                    <span id="rank-b" class="rank-badge">🐣 Œuf Curieux</span>
+                    <strong id="stat-age-b" class="xp-count">0 / 30 XP</strong>
+                </div>
             </div>
-            <div class="stat-pill pill-mem">
-                <span class="label">Boîte à Souvenirs</span>
-                <strong id="stat-mem">0.0k / 50k</strong>
-                <span class="rank-badge">Miroir ×2</span>
-            </div>
-            <div class="stat-pill pill-arena">
-                <span class="label">Matchs (A / Nul / B)</span>
-                <strong id="stat-winrate">0 / 0 / 0</strong>
-                <span id="stat-curriculum" class="rank-badge">Professeur Actif</span>
+
+            <div class="hud-mini-stats">
+                <div class="mini-pill pill-mem">
+                    <span class="label">🧠 Souvenirs</span>
+                    <strong id="stat-mem">0.0k / 50k</strong>
+                    <span id="stat-curriculum" class="sub-tag">🦉 Hibou Actif</span>
+                </div>
+                <div class="mini-pill pill-arena">
+                    <span class="label">⚔️ Arène (A/Nul/B)</span>
+                    <strong id="stat-winrate">0 / 0 / 0</strong>
+                    <span id="stat-trophies" class="sub-tag">🏆 0 / 5 Succès</span>
+                </div>
             </div>
         </section>
 
-        <!-- NAVIGATION PAR ONGLETS -->
+        <!-- NAVIGATION PAR ONGLETS TYPE MENU DE JEU -->
         <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="tab-game">🧸 Plateau & Jeu</button>
-            <button class="tab-btn" data-tab="tab-network">🫧 Bulles de Neurones</button>
-            <button class="tab-btn" data-tab="tab-lab">🧁 Atelier & Recettes</button>
+            <button class="tab-btn active" data-tab="tab-game">🎮 Dojo & Jeu</button>
+            <button class="tab-btn" data-tab="tab-saves">💾 Cartouches & Succès</button>
+            <button class="tab-btn" data-tab="tab-network">🫧 Rayons X</button>
+            <button class="tab-btn" data-tab="tab-lab">🧁 Atelier</button>
         </nav>
 
         <!-- BANDEAU MASCOTTE CHIBI & ENTRAÎNEMENT -->
@@ -77,22 +104,23 @@
             <div class="training-actions">
                 <button id="btn-train-a" class="btn-train-a">🍯 Entraîner A</button>
                 <button id="btn-train-b" class="btn-train-b">🫐 Entraîner B</button>
-                <button id="btn-arena" class="btn-arena">🎡 Match A vs B</button>
+                <button id="btn-arena" class="btn-arena">⚔️ Duel A vs B</button>
+                <button id="btn-quick-save" class="btn-save-quick" title="Ouvrir le menu de sauvegarde">💾 Sauver</button>
             </div>
         </div>
 
         <!-- ==========================================
-             ONGLET 1 : PLATEAU DE JEU CHIBI
+             ONGLET 1 : DOJO & PLATEAU DE JEU
              ========================================== -->
         <main id="tab-game" class="tab-content active">
             <div class="mode-bar">
                 <div class="mode-select-group">
-                    <label for="game-mode">Mode :</label>
+                    <label for="game-mode">Adversaire :</label>
                     <select id="game-mode" class="mode-select">
                         <option value="HUMAN_FIRST">🍓 Joueur (1er) vs 🍯 Mochi-A</option>
                         <option value="AI_FIRST">🍯 Mochi-A (1er) vs 🍓 Joueur</option>
                         <option value="COACH_2P">👯 2 Joueurs + 🧚 Coach Mochi</option>
-                        <option value="VS_TEACHER">🍓 Joueur vs 🦉 Maître Hibou (Bot)</option>
+                        <option value="VS_TEACHER">🍓 Joueur vs 🦉 Maître Hibou (Boss)</option>
                     </select>
                 </div>
                 <button id="btn-thermal" class="btn-thermal active" title="Afficher les petites bulles d'aide sur la grille">
@@ -102,16 +130,14 @@
 
             <div class="game-layout">
                 <div class="board-column">
-                    <!-- Jauges d'humeur par colonne -->
                     <div class="brain-panel">
                         <div class="brain-header">
-                            <span>💭 Envie de jouer par colonne (Confiance)</span>
+                            <span>💭 Confiance par colonne</span>
                             <span id="brain-mode-label" class="brain-tag">Au repos</span>
                         </div>
                         <div id="brain-bars" class="brain-grid"></div>
                     </div>
 
-                    <!-- Plateau + Jauge d'équilibre pastel -->
                     <div class="arena-stage">
                         <div class="eval-bar-container" title="Équilibre de la partie">
                             <div id="eval-bar-fill" class="eval-bar-fill"></div>
@@ -124,19 +150,55 @@
                         </div>
                     </div>
 
-                    <!-- Barre d'outils joueur -->
                     <div class="human-toolbar">
                         <button id="btn-reset" class="btn-primary">🌱 Nouvelle Partie</button>
-                        <button id="btn-undo" class="btn-secondary" title="Remonter d'un tour">⏪ Oups, annuler</button>
-                        <button id="btn-hint" class="btn-secondary" title="Demander un coup de pouce">💡 Indice</button>
-                        <button id="btn-wipe" class="btn-danger" title="Faire oublier tout ce que l'IA a appris">🧹 Oubli total</button>
+                        <button id="btn-undo" class="btn-secondary">⏪ Annuler</button>
+                        <button id="btn-hint" class="btn-secondary">💡 Indice</button>
+                        <button id="btn-wipe" class="btn-danger">🧹 Reset Niv.1</button>
                     </div>
                 </div>
             </div>
         </main>
 
         <!-- ==========================================
-             ONGLET 2 : BULLES DE NEURONES (RAYONS X)
+             ONGLET 2 : CARTOUCHES DE SAUVEGARDE & SUCCÈS
+             ========================================== -->
+        <section id="tab-saves" class="tab-content">
+            <div class="save-menu-header">
+                <div>
+                    <h2>💾 Cartouches Mémoire</h2>
+                    <p>Sauvegarde tes meilleures IA dans les 4 emplacements de la console ou échange-les en 1 seul fichier <code>.mochi</code> !</p>
+                </div>
+                <div class="name-customizer">
+                    <input type="text" id="input-mochi-name" maxlength="18" placeholder="Nommer Mochi-A (ex: Mochi Titan)">
+                    <button id="btn-rename-a" class="btn-secondary">✏️ Renommer A</button>
+                </div>
+            </div>
+
+            <!-- 4 SLOTS DE SAUVEGARDE TYPE CONSOLE -->
+            <div id="save-slots-grid" class="save-slots-grid"></div>
+
+            <!-- BARRE PARTAGE FICHIER UNIQUE (.MOCHI) & CLONAGE -->
+            <div class="cartridge-utility-bar">
+                <div class="utility-left">
+                    <button id="btn-clone-a-to-b" class="btn-secondary">👯 Copier Mochi-A ➔ Mochi-B</button>
+                </div>
+                <div class="utility-right">
+                    <button id="btn-export-mochi" class="btn-primary">📦 Exporter Fichier (.mochi)</button>
+                    <label for="file-import-mochi" class="btn-file-label">📥 Importer Fichier (.mochi)</label>
+                    <input type="file" id="file-import-mochi" accept=".mochi,.json" style="display:none">
+                </div>
+            </div>
+
+            <!-- SALLE DES TROPHÉES / QUÊTES -->
+            <div class="trophies-section">
+                <h3>🏆 Quêtes & Trophées du Dojo</h3>
+                <div id="achievements-grid" class="achievements-grid"></div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             ONGLET 3 : RAYONS X (BULLES DE NEURONES)
              ========================================== -->
         <section id="tab-network" class="tab-content">
             <div class="network-header">
@@ -167,19 +229,10 @@
         </section>
 
         <!-- ==========================================
-             ONGLET 3 : ATELIER & RECETTES D'APPRENTISSAGE
+             ONGLET 4 : ATELIER & RECETTES D'APPRENTISSAGE
              ========================================== -->
         <section id="tab-lab" class="tab-content">
             <div class="lab-grid">
-                <div class="lab-card">
-                    <h3>🎀 Duplication & Souvenir</h3>
-                    <p class="lab-sub">Copie le cerveau de Mochi-A dans Mochi-B avant de l'entraîner, puis fais-les jouer ensemble pour voir ses progrès !</p>
-                    <div class="genetic-actions">
-                        <button id="btn-clone-a-to-b" class="btn-secondary">👯 Copier Mochi-A ➔ Mochi-B</button>
-                        <button id="btn-export-a" class="btn-secondary">🎁 Sauvegarder Mochi-A en fichier</button>
-                    </div>
-                </div>
-
                 <div class="lab-card">
                     <h3>📈 Journal des Progrès</h3>
                     <p class="lab-sub">Quand la courbe verte grimpe au-dessus des pointillés, Mochi réussit de plus en plus de parades et d'alignements.</p>
@@ -188,7 +241,7 @@
 
                 <div class="lab-card">
                     <h3>🧁 Recette d'Éducation (Friandises d'Apprentissage)</h3>
-                    <p class="lab-sub">Choisis combien de friandises Mochi reçoit lorsqu'elle fait une belle action :</p>
+                    <p class="lab-sub">Choisis combien de points d'XP Mochi reçoit lorsqu'elle réussit une action tactique :</p>
 
                     <div class="slider-group">
                         <label>

@@ -15,10 +15,10 @@ let hoveredCol = null;
 let lastAITurnContext = null;
 let lastKnownScores = [0, 0, 0, 0, 0, 0, 0];
 let arenaStats = { aWins: 0, bWins: 0, draws: 0 };
+let lastKnownLevelA = 1;
 
 const SPEED_DELAYS = { '1': 550, '5': 110, '10': 45, '20': 15, 'MAX': 0 };
 
-// Visages Chibi (Kaomoji) de Mochi-IA selon son humeur
 const MASCOT_FACES = {
     IDLE: '( ◕ ㅅ ◕ )',
     THINK: '( ◔ ㅅ ◔ )💭',
@@ -29,6 +29,17 @@ const MASCOT_FACES = {
     COACH: '( ◕ ‿ ◕ )💡'
 };
 
+// Liste des Quêtes / Succès du jeu
+const ACHIEVEMENTS = [
+    { id: 'first_steps', icon: '🐣', title: 'Premiers Pas', desc: 'Atteindre 10 parties avec Mochi-A', check: () => brain.agents['A'].games >= 10 },
+    { id: 'shield_master', icon: '🛡️', title: 'Bouclier Doré', desc: 'Réussir 15 parades décisives', check: () => brain.agents['A'].blocks >= 15 },
+    { id: 'cartridge_saver', icon: '💾', title: 'Collectionneur', desc: 'Sauvegarder une IA dans une cartouche', check: () => Object.values(brain.getSaveSlots()).some(Boolean) },
+    { id: 'owl_graduate', icon: '🦉', title: 'Envol Autonome', desc: 'Dépasser 500 parties (Fin du tutorat)', check: () => brain.agents['A'].games >= 500 },
+    { id: 'grand_master', icon: '👑', title: 'Grand Maître Mochi', desc: 'Atteindre 1200 parties d’expérience', check: () => brain.agents['A'].games >= 1200 }
+];
+
+let unlockedAchievements = new Set(JSON.parse(localStorage.getItem('mochi_achievements_v1') || '[]'));
+
 function setMascotMood(moodKey) {
     const el = document.getElementById('mascot-avatar');
     if (!el) return;
@@ -37,6 +48,18 @@ function setMascotMood(moodKey) {
     void el.offsetWidth;
     el.classList.add('bounce');
     setTimeout(() => el.classList.remove('bounce'), 300);
+}
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === tabId));
+    if (tabId === 'tab-saves') {
+        renderSaveSlots();
+        renderAchievements();
+    } else if (tabId === 'tab-network' || tabId === 'tab-lab') {
+        visualizer.drawNeuralNetwork(brain.lastInspection);
+        visualizer.drawLearningCurve();
+    }
 }
 
 function initDOM() {
@@ -70,14 +93,7 @@ function initDOM() {
     }
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(btn.dataset.tab).classList.add('active');
-            visualizer.drawNeuralNetwork(brain.lastInspection);
-            visualizer.drawLearningCurve();
-        };
+        btn.onclick = () => switchTab(btn.dataset.tab);
     });
 
     document.querySelectorAll('.speed-btn').forEach(btn => {
@@ -103,6 +119,128 @@ function initDOM() {
     bindSlider('slider-three', 'val-reward-three', 'lineOfThree', '');
     bindSlider('slider-center', 'val-reward-center', 'center', '');
     bindSlider('slider-epsilon', 'val-epsilon', 'minEpsilon', ' %', 0.01);
+}
+
+// --- RENDU DES 4 CARTOUCHES DE SAUVEGARDE ---
+function renderSaveSlots() {
+    const container = document.getElementById('save-slots-grid');
+    if (!container) return;
+    const slots = brain.getSaveSlots();
+    container.innerHTML = '';
+
+    for (let slotId = 1; slotId <= 4; slotId++) {
+        const data = slots[slotId];
+        const card = document.createElement('div');
+        card.className = 'cartridge-card ' + (data ? 'occupied' : 'empty-slot');
+
+        if (data) {
+            card.innerHTML = `
+                <div class="cartridge-top">
+                    <span class="slot-number">💾 Cartouche #${slotId}</span>
+                    <span class="slot-date">${data.date}</span>
+                </div>
+                <div class="cartridge-body">
+                    <h4>${data.name} <span class="lvl-badge">Niv. ${data.level || 1}</span></h4>
+                    <div class="cartridge-meta">
+                        <span>${data.rankTitle}</span>
+                        <span>• <strong>${data.games}</strong> parties</span>
+                        <span>• 🛡️ ${data.blocks || 0} parades</span>
+                    </div>
+                </div>
+                <div class="cartridge-actions">
+                    <button class="btn-primary" data-action="load-a" data-slot="${slotId}">📥 Charger A</button>
+                    <button class="btn-train-b" data-action="load-b" data-slot="${slotId}">📥 Charger B</button>
+                    <button class="btn-secondary" data-action="save" data-slot="${slotId}">🔄 Écraser</button>
+                    <button class="btn-danger" data-action="delete" data-slot="${slotId}">🗑️</button>
+                </div>
+            `;
+        } else {
+            card.innerHTML = `
+                <div class="cartridge-top">
+                    <span class="slot-number">💿 Cartouche #${slotId}</span>
+                    <span class="slot-date">Emplacement Vide</span>
+                </div>
+                <div class="cartridge-body">
+                    <h4>Aucun Cerveau</h4>
+                    <div class="cartridge-meta">Prêt à enregistrer l'état actuel de Mochi-A</div>
+                </div>
+                <div class="cartridge-actions">
+                    <button class="btn-primary" data-action="save" data-slot="${slotId}">💾 Sauvegarder Mochi-A ici</button>
+                </div>
+            `;
+        }
+        container.appendChild(card);
+    }
+
+    container.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.onclick = async () => {
+            if (isTraining || isArena) {
+                showPopup("⚠️ Mets l'entraînement en pause d'abord !", "#d64568");
+                return;
+            }
+            const slotId = btn.dataset.slot;
+            const action = btn.dataset.action;
+
+            if (action === 'save') {
+                const customInput = document.getElementById('input-mochi-name');
+                const customName = customInput && customInput.value.trim() ? customInput.value.trim() : brain.agents['A'].name;
+                const saved = await brain.saveToSlot(slotId, 'A', customName);
+                if (sfx.save) sfx.save();
+                showPopup(`💾 ${saved.name} sauvée dans la Cartouche #${slotId} !`, "#2d7a50");
+                updateTelemetry();
+                renderSaveSlots();
+            } else if (action === 'load-a' || action === 'load-b') {
+                const target = action === 'load-a' ? 'A' : 'B';
+                const loaded = await brain.loadFromSlot(slotId, target);
+                if (sfx.save) sfx.save();
+                lastKnownLevelA = brain.getProgression(brain.agents['A'].games).level;
+                updateTelemetry();
+                showPopup(`🎮 ${loaded.name} chargée dans Mochi-${target} !`, "#548cc4");
+            } else if (action === 'delete') {
+                await brain.deleteSlot(slotId);
+                renderSaveSlots();
+                showPopup(`🗑️ Cartouche #${slotId} vidée`, "#d64568");
+            }
+        };
+    });
+}
+
+// --- RENDU DES QUÊTES & SUCCÈS ---
+function checkAchievements() {
+    let newlyUnlocked = false;
+    ACHIEVEMENTS.forEach(ach => {
+        if (!unlockedAchievements.has(ach.id) && ach.check()) {
+            unlockedAchievements.add(ach.id);
+            newlyUnlocked = true;
+            if (sfx.levelUp) sfx.levelUp();
+            showPopup(`🏆 Succès débloqué : ${ach.title} !`, "#d48c00");
+        }
+    });
+    if (newlyUnlocked) {
+        localStorage.setItem('mochi_achievements_v1', JSON.stringify([...unlockedAchievements]));
+        renderAchievements();
+    }
+    const trophyEl = document.getElementById('stat-trophies');
+    if (trophyEl) trophyEl.innerText = `🏆 ${unlockedAchievements.size} / ${ACHIEVEMENTS.length} Succès`;
+}
+
+function renderAchievements() {
+    const grid = document.getElementById('achievements-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    ACHIEVEMENTS.forEach(ach => {
+        const isUnlocked = unlockedAchievements.has(ach.id);
+        const card = document.createElement('div');
+        card.className = 'trophy-card ' + (isUnlocked ? 'unlocked' : '');
+        card.innerHTML = `
+            <div class="trophy-icon">${ach.icon}</div>
+            <div class="trophy-info">
+                <strong>${ach.title} ${isUnlocked ? '✅' : '🔒'}</strong>
+                <span>${ach.desc}</span>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
 }
 
 function updateGhostAndThermal(hintCol = null) {
@@ -189,7 +327,7 @@ function updateBrainBars(scores, chosenCol, exploratory, aiLabel, perspectivePla
     lastKnownScores = scores;
     const tag = document.getElementById('brain-mode-label');
     if (tag) {
-        tag.innerText = exploratory ? `🦋 ${aiLabel} est curieuse` : `🌸 ${aiLabel} aime la Col. ${chosenCol + 1}`;
+        tag.innerText = exploratory ? `🦋 ${aiLabel} explore` : `🌸 ${aiLabel} vise Col. ${chosenCol + 1}`;
     }
 
     const validScores = scores.filter(s => Number.isFinite(s));
@@ -237,17 +375,31 @@ function showPopup(text, color = '#3b8c62') {
 }
 
 function updateTelemetry() {
-    const gamesA = brain.agents['A'].games;
-    const gamesB = brain.agents['B'].games;
-    document.getElementById('stat-age-a').innerText = `${gamesA} parties`;
-    document.getElementById('stat-age-b').innerText = `${gamesB} parties`;
-    document.getElementById('rank-a').innerText = brain.getRankTitle(gamesA);
-    document.getElementById('rank-b').innerText = brain.getRankTitle(gamesB);
+    ['A', 'B'].forEach(key => {
+        const ag = brain.agents[key];
+        const prog = brain.getProgression(ag.games);
+        const lower = key.toLowerCase();
+
+        document.getElementById(`name-${lower}`).innerText = ag.name;
+        document.getElementById(`lvl-${lower}`).innerText = `Niv. ${prog.level}`;
+        document.getElementById(`rank-${lower}`).innerText = prog.rankTitle;
+        document.getElementById(`xp-fill-${lower}`).style.width = `${prog.xpPercent}%`;
+        document.getElementById(`stat-age-${lower}`).innerText =
+            prog.nextGoal === Infinity ? `${ag.games} XP (MAX)` : `${ag.games} / ${prog.nextGoal} XP`;
+
+        if (key === 'A' && prog.level > lastKnownLevelA) {
+            lastKnownLevelA = prog.level;
+            if (sfx.levelUp) sfx.levelUp();
+            showPopup(`🆙 LEVEL UP ! ${ag.name} passe Niveau ${prog.level} !`, '#d48c00');
+        }
+    });
 
     const mem = brain.agents['A'].memory.length + brain.agents['B'].memory.length;
     document.getElementById('stat-mem').innerText = `${(mem / 1000).toFixed(1)}k / 50k`;
     document.getElementById('stat-winrate').innerText = `${arenaStats.aWins} / ${arenaStats.draws} / ${arenaStats.bWins}`;
-    document.getElementById('stat-curriculum').innerText = gamesA < 500 ? "🦉 Hibou Actif" : "🦋 Autonome";
+    document.getElementById('stat-curriculum').innerText = brain.agents['A'].games < 500 ? "🦉 Hibou Actif" : "🦋 Autonome";
+
+    checkAchievements();
 }
 
 function setStatus(text, cls = '') {
@@ -258,7 +410,7 @@ function setStatus(text, cls = '') {
 
 async function triggerAIResponse() {
     setMascotMood('THINK');
-    setStatus("Hmm... Mochi réfléchit à son coup...", "status-thinking");
+    setStatus(`Hmm... ${brain.agents['A'].name} réfléchit à son coup...`, "status-thinking");
 
     let aiCol;
     let scores = [0, 0, 0, 0, 0, 0, 0];
@@ -274,7 +426,7 @@ async function triggerAIResponse() {
         aiCol = res.col;
         scores = res.scores;
         stateBefore = res.normState;
-        updateBrainBars(scores, aiCol, false, 'Mochi-A', 2);
+        updateBrainBars(scores, aiCol, false, brain.agents['A'].name, 2);
     }
 
     await new Promise(r => setTimeout(r, 420));
@@ -289,6 +441,8 @@ async function triggerAIResponse() {
 
         renderBoard(aiCoords, aiWinCoords);
         const { reward, popup } = engine.evaluateMoveReward(aiCol, 2, aiWon, aiDraw);
+        if (reward >= 5 && !aiWon) brain.agents['A'].blocks++;
+
         if (popup) {
             showPopup(popup.text, '#2d7a50');
             if (reward >= 5) {
@@ -306,24 +460,25 @@ async function triggerAIResponse() {
         const nextHumanEval = brain.selectAction(engine.board, 'A', 1, 0, false);
         lastKnownScores = nextHumanEval.scores;
         updateGhostAndThermal();
+
+        if (done) {
+            brain.agents['A'].games++;
+            if (aiWon) brain.agents['A'].wins++;
+            await brain.checkpoint('A');
+            lastAITurnContext = null;
+        }
         updateTelemetry();
 
         if (aiWon) {
             sfx.win();
             setMascotMood('HAPPY');
-            setStatus("Youpi ! Mochi a aligné 4 pions !", "status-win-ai");
+            setStatus(`Youpi ! ${brain.agents['A'].name} a aligné 4 pions !`, "status-win-ai");
         } else if (aiDraw) {
             setMascotMood('IDLE');
             setStatus("🤝 Égalité parfaite ! Belle partie !");
         } else {
             if (reward < 5) setMascotMood('IDLE');
             setStatus("À toi de jouer ! Clique sur une colonne.");
-        }
-
-        if (done) {
-            brain.agents['A'].games++;
-            await brain.checkpoint('A');
-            lastAITurnContext = null;
         }
     }
 }
@@ -375,8 +530,8 @@ async function handleHumanMove(col) {
             if (humanWon) {
                 sfx.punish();
                 setMascotMood('SAD');
-                setStatus("Oups ! Tu as gagné ! Mochi note son erreur pour la prochaine fois.", "status-win-human");
-                showPopup("💦 Leçon apprise par Mochi (-10)", "#d64568");
+                setStatus(`Bravo ! Tu as gagné ! ${brain.agents['A'].name} retient la leçon (+1 XP).`, "status-win-human");
+                showPopup("💦 Leçon apprise (-10)", "#d64568");
                 if (lastAITurnContext) {
                     brain.saveMemory('A', lastAITurnContext.state, lastAITurnContext.action, -10, lastAITurnContext.nextState, true, 25);
                     await brain.trainBatch('A', 128);
@@ -448,6 +603,7 @@ async function runTrainingLoop(mode = 'A') {
             gameDone = win || draw;
 
             const { reward, popup } = engine.evaluateMoveReward(col, turn, win, draw);
+            if (reward >= 5 && !win) brain.agents[activeAI].blocks++;
             gameRewardSum += reward;
             const stateAfter = brain.getNormalizedState(engine.board, turn);
 
@@ -455,9 +611,9 @@ async function runTrainingLoop(mode = 'A') {
 
             if (isVisual) {
                 if (currentSpeed === '1') sfx.drop(turn === 1);
-                updateBrainBars(scores, col, exploratory, `Mochi-${activeAI}`, turn);
+                updateBrainBars(scores, col, exploratory, brain.agents[activeAI].name, turn);
                 renderBoard(coords, winCoords);
-                if (popup) showPopup(`Mochi-${activeAI}: ${popup.text}`, '#2d7a50');
+                if (popup) showPopup(`${brain.agents[activeAI].name}: ${popup.text}`, '#2d7a50');
                 const delay = SPEED_DELAYS[currentSpeed] || 20;
                 await new Promise(r => setTimeout(r, gameDone ? delay * 2 : delay));
             }
@@ -498,8 +654,8 @@ async function runTrainingLoop(mode = 'A') {
         if (currentSpeed !== 'MAX' || sessionGames % 5 === 0) {
             setStatus(
                 isArena
-                    ? `🎡 Match amical (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} parties`
-                    : `🍯 Mochi-${mode} s'entraîne (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : +${sessionGames} parties`
+                    ? `⚔️ Duel en cours (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : ${sessionGames} matchs`
+                    : `🍯 ${brain.agents[mode].name} s'entraîne (${currentSpeed === 'MAX' ? 'MAX' : 'x' + currentSpeed}) : +${sessionGames} XP`
             );
             if (currentSpeed === 'MAX') renderBoard();
             updateTelemetry();
@@ -543,7 +699,7 @@ async function startNewHumanGame() {
         updateBrainBars(initEval.scores, initEval.col, false, 'Coach J1', 1);
         setStatus("👯 Mode 2 Joueurs : Au tour de 🍓 Fraise !");
     } else {
-        setStatus("Coucou ! Pose un pion 🍓 Fraise pour commencer.");
+        setStatus(`Prêt ! Pose un pion 🍓 Fraise face à ${brain.agents['A'].name}.`);
     }
 }
 
@@ -561,7 +717,39 @@ function bindButtons() {
 
     document.getElementById('btn-train-a').onclick = () => toggleLoop('A', 'btn-train-a', "🍯 Entraîner A");
     document.getElementById('btn-train-b').onclick = () => toggleLoop('B', 'btn-train-b', "🫐 Entraîner B");
-    document.getElementById('btn-arena').onclick = () => toggleLoop('ARENA', 'btn-arena', "🎡 Match A vs B");
+    document.getElementById('btn-arena').onclick = () => toggleLoop('ARENA', 'btn-arena', "⚔️ Duel A vs B");
+
+    document.getElementById('btn-quick-save').onclick = () => switchTab('tab-saves');
+
+    document.getElementById('btn-rename-a').onclick = async () => {
+        const input = document.getElementById('input-mochi-name');
+        if (!input || !input.value.trim()) return;
+        brain.agents['A'].name = input.value.trim();
+        await brain.checkpoint('A');
+        updateTelemetry();
+        showPopup(`✏️ Renommée en ${brain.agents['A'].name} !`, "#2d7a50");
+    };
+
+    document.getElementById('btn-export-mochi').onclick = async () => {
+        await brain.exportSingleFile('A');
+        if (sfx.save) sfx.save();
+        showPopup("📦 Fichier unique .mochi exporté !", "#2d7a50");
+    };
+
+    document.getElementById('file-import-mochi').onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const imported = await brain.importSingleFile(file, 'A');
+            lastKnownLevelA = brain.getProgression(imported.games).level;
+            if (sfx.levelUp) sfx.levelUp();
+            updateTelemetry();
+            showPopup(`🎉 ${imported.name} importée avec succès !`, "#2d7a50");
+        } catch (err) {
+            showPopup("❌ Fichier .mochi invalide", "#d64568");
+        }
+        e.target.value = '';
+    };
 
     document.getElementById('btn-reset').onclick = () => startNewHumanGame();
 
@@ -615,18 +803,17 @@ function bindButtons() {
         showPopup("👯 Mochi-A copiée dans Mochi-B !", "#2d7a50");
     };
 
-    document.getElementById('btn-export-a').onclick = () => brain.exportModel('A');
-
     document.getElementById('btn-wipe').onclick = async () => {
         if (isTraining || isArena || isProcessingMove) return;
-        if (!confirm("Faire oublier tout ce que Mochi-A et Mochi-B ont appris (Niveau 0) ?")) return;
+        if (!confirm("Remettre Mochi-A et Mochi-B au Niveau 1 (les Cartouches sauvegardées seront conservées) ?")) return;
         await brain.wipeAll();
+        lastKnownLevelA = 1;
         arenaStats = { aWins: 0, bWins: 0, draws: 0 };
         visualizer.rewardHistory = [];
         updateTelemetry();
         visualizer.drawNeuralNetwork(null);
         visualizer.drawLearningCurve();
-        showPopup("🧹 Mémoire toute propre !", "#d64568");
+        showPopup("🧹 Retour au Niveau 1 !", "#d64568");
         startNewHumanGame();
     };
 }
@@ -635,7 +822,10 @@ function bindButtons() {
     initDOM();
     bindButtons();
     await brain.init();
-    document.getElementById('ia-status').innerText = "Édition Chibi Cozy • Neurones Prêts & Boîte à Musique Active";
+    lastKnownLevelA = brain.getProgression(brain.agents['A'].games).level;
+    document.getElementById('ia-status').innerText = "Édition Neural RPG • Cartouches & Quêtes Actives";
     updateTelemetry();
+    renderSaveSlots();
+    renderAchievements();
     startNewHumanGame();
 })();

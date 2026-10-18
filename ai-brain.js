@@ -4,10 +4,32 @@ class NeuralAgentManager {
         this.COLS = cols;
         this.GAMMA = 0.99;
         this.MEMORY_SIZE = 50000;
+        this.SLOTS_META_KEY = 'mochi_save_slots_v1';
+
+        this.RANKS = [
+            { min: 0,    title: "🐣 Œuf Curieux",     next: 30 },
+            { min: 30,   title: "👶 Apprenti Mochi",  next: 150 },
+            { min: 150,  title: "🛡️ Gardien Pastel",  next: 500 },
+            { min: 500,  title: "🧠 Stratège Éveillé", next: 1200 },
+            { min: 1200, title: "👑 Grand Maître",    next: 2500 },
+            { min: 2500, title: "✨ Divinité Mochi",  next: Infinity }
+        ];
 
         this.agents = {
-            'A': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-a-v5', ageKey: 'dqn_age_a_v5' },
-            'B': { model: null, target: null, probe: null, memory: [], games: 0, storage: 'indexeddb://dqn-ia-b-v5', ageKey: 'dqn_age_b_v5' }
+            'A': {
+                name: 'Mochi-A',
+                model: null, target: null, probe: null, memory: [],
+                games: 0, blocks: 0, wins: 0,
+                storage: 'indexeddb://dqn-ia-a-v5',
+                metaKey: 'dqn_meta_a_v5'
+            },
+            'B': {
+                name: 'Mochi-B',
+                model: null, target: null, probe: null, memory: [],
+                games: 0, blocks: 0, wins: 0,
+                storage: 'indexeddb://dqn-ia-b-v5',
+                metaKey: 'dqn_meta_b_v5'
+            }
         };
 
         this.lastInspection = null;
@@ -34,10 +56,10 @@ class NeuralAgentManager {
         return tf.model({
             inputs: seqModel.inputs,
             outputs: [
-                seqModel.layers[2].output, // [1, 6, 7, 128]
-                seqModel.layers[4].output, // [1, 256]
-                seqModel.layers[5].output, // [1, 128]
-                seqModel.layers[6].output  // [1, 7]
+                seqModel.layers[2].output,
+                seqModel.layers[4].output,
+                seqModel.layers[5].output,
+                seqModel.layers[6].output
             ]
         });
     }
@@ -45,7 +67,14 @@ class NeuralAgentManager {
     async init() {
         for (const key of ['A', 'B']) {
             const ag = this.agents[key];
-            ag.games = parseInt(localStorage.getItem(ag.ageKey) || '0', 10);
+            const savedMeta = JSON.parse(localStorage.getItem(ag.metaKey) || 'null');
+            const legacyAge = parseInt(localStorage.getItem(`dqn_age_${key.toLowerCase()}_v5`) || '0', 10);
+
+            ag.games = savedMeta ? (savedMeta.games || 0) : legacyAge;
+            ag.blocks = savedMeta ? (savedMeta.blocks || 0) : 0;
+            ag.wins = savedMeta ? (savedMeta.wins || 0) : 0;
+            ag.name = savedMeta && savedMeta.name ? savedMeta.name : `Mochi-${key}`;
+
             try {
                 ag.model = await tf.loadLayersModel(ag.storage);
                 ag.target = await tf.loadLayersModel(ag.storage);
@@ -60,25 +89,187 @@ class NeuralAgentManager {
         }
     }
 
+    // --- PROGRESSION RPG (NIVEAU, RANG & BARRE D'XP) ---
+    getProgression(games) {
+        const level = Math.max(1, Math.floor(Math.sqrt(games / 2)) + 1);
+        let currentRank = this.RANKS[0];
+        for (const r of this.RANKS) {
+            if (games >= r.min) currentRank = r;
+        }
+        const span = currentRank.next === Infinity ? 1000 : (currentRank.next - currentRank.min);
+        const progressInRank = games - currentRank.min;
+        const pct = currentRank.next === Infinity
+            ? 100
+            : Math.min(100, Math.max(4, Math.round((progressInRank / span) * 100)));
+
+        return {
+            level,
+            rankTitle: currentRank.title,
+            nextGoal: currentRank.next,
+            xpPercent: pct
+        };
+    }
+
+    getRankTitle(games) {
+        return this.getProgression(games).rankTitle;
+    }
+
+    // --- SYSTÈME DE CARTOUCHES (4 SLOTS INTERNES) ---
+    getSaveSlots() {
+        const raw = localStorage.getItem(this.SLOTS_META_KEY);
+        if (!raw) return { 1: null, 2: null, 3: null, 4: null };
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return { 1: null, 2: null, 3: null, 4: null };
+        }
+    }
+
+    async saveToSlot(slotId, aiKey = 'A', customName = '') {
+        const ag = this.agents[aiKey];
+        const slotStorage = `indexeddb://mochi-cartridge-slot-${slotId}`;
+        await ag.model.save(slotStorage);
+
+        const slots = this.getSaveSlots();
+        const prog = this.getProgression(ag.games);
+        slots[slotId] = {
+            slotId,
+            name: customName.trim() || ag.name || `Mochi-${aiKey}`,
+            games: ag.games,
+            blocks: ag.blocks,
+            wins: ag.wins,
+            level: prog.level,
+            rankTitle: prog.rankTitle,
+            date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        };
+        localStorage.setItem(this.SLOTS_META_KEY, JSON.stringify(slots));
+        return slots[slotId];
+    }
+
+    async loadFromSlot(slotId, targetKey = 'A') {
+        const slots = this.getSaveSlots();
+        const meta = slots[slotId];
+        if (!meta) throw new Error("Emplacement vide");
+
+        const slotStorage = `indexeddb://mochi-cartridge-slot-${slotId}`;
+        const loadedModel = await tf.loadLayersModel(slotStorage);
+        const loadedTarget = await tf.loadLayersModel(slotStorage);
+
+        const dst = this.agents[targetKey];
+        if (dst.model) dst.model.dispose();
+        if (dst.target) dst.target.dispose();
+
+        dst.model = this.compile(loadedModel);
+        dst.target = this.compile(loadedTarget);
+        dst.probe = this.buildProbe(dst.model);
+        dst.name = meta.name;
+        dst.games = meta.games || 0;
+        dst.blocks = meta.blocks || 0;
+        dst.wins = meta.wins || 0;
+        dst.memory = [];
+
+        await this.checkpoint(targetKey);
+        return meta;
+    }
+
+    async deleteSlot(slotId) {
+        const slotStorage = `indexeddb://mochi-cartridge-slot-${slotId}`;
+        try { await tf.io.removeModel(slotStorage); } catch (e) {}
+        const slots = this.getSaveSlots();
+        slots[slotId] = null;
+        localStorage.setItem(this.SLOTS_META_KEY, JSON.stringify(slots));
+    }
+
+    // --- EXPORT / IMPORT EN 1 SEUL FICHIER (.mochi) ---
+    arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+    }
+
+    base64ToFloat32Array(base64) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return new Float32Array(bytes.buffer);
+    }
+
+    async exportSingleFile(aiKey = 'A') {
+        const ag = this.agents[aiKey];
+        const weights = ag.model.getWeights();
+        const serializedWeights = weights.map(w => {
+            const f32 = new Float32Array(w.dataSync());
+            return {
+                shape: w.shape,
+                b64: this.arrayBufferToBase64(f32.buffer)
+            };
+        });
+
+        const payload = {
+            format: 'MOCHI_CONNECT4_V1',
+            name: ag.name || `Mochi-${aiKey}`,
+            games: ag.games,
+            blocks: ag.blocks,
+            wins: ag.wins,
+            exportedAt: new Date().toISOString(),
+            weights: serializedWeights
+        };
+
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safeName = (ag.name || `mochi-${aiKey}`).toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+        a.href = url;
+        a.download = `${safeName}-niv${this.getProgression(ag.games).level}.mochi`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    async importSingleFile(file, targetKey = 'A') {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!data || data.format !== 'MOCHI_CONNECT4_V1' || !Array.isArray(data.weights)) {
+            throw new Error("Fichier .mochi invalide");
+        }
+
+        const tensors = data.weights.map(w => {
+            const vals = this.base64ToFloat32Array(w.b64);
+            return tf.tensor(vals, w.shape, 'float32');
+        });
+
+        const dst = this.agents[targetKey];
+        dst.model.setWeights(tensors);
+        dst.target.setWeights(tensors);
+        tensors.forEach(t => t.dispose());
+
+        dst.name = data.name || `Mochi-${targetKey}`;
+        dst.games = data.games || 0;
+        dst.blocks = data.blocks || 0;
+        dst.wins = data.wins || 0;
+        dst.memory = [];
+
+        await this.checkpoint(targetKey);
+        return dst;
+    }
+
     async cloneAgent(fromKey = 'A', toKey = 'B') {
         const src = this.agents[fromKey];
         const dst = this.agents[toKey];
         dst.model.setWeights(src.model.getWeights());
         dst.target.setWeights(src.target.getWeights());
         dst.games = src.games;
+        dst.blocks = src.blocks;
+        dst.wins = src.wins;
+        dst.name = `${src.name} (Clone)`;
         await this.checkpoint(toKey);
-    }
-
-    async exportModel(aiKey = 'A') {
-        await this.agents[aiKey].model.save(`downloads://cerveau-puissance4-ia-${aiKey.toLowerCase()}`);
-    }
-
-    getRankTitle(games) {
-        if (games < 30) return "🐣 Nouveau-né";
-        if (games < 150) return "👶 Apprenti";
-        if (games < 500) return "🛡️ Gardien";
-        if (games < 1200) return "🧠 Stratège";
-        return "👑 Grand Maître";
     }
 
     async wipeAll() {
@@ -93,7 +284,11 @@ class NeuralAgentManager {
             ag.probe = this.buildProbe(ag.model);
             ag.memory = [];
             ag.games = 0;
-            localStorage.setItem(ag.ageKey, '0');
+            ag.blocks = 0;
+            ag.wins = 0;
+            ag.name = `Mochi-${key}`;
+            localStorage.removeItem(ag.metaKey);
+            localStorage.setItem(`dqn_age_${key.toLowerCase()}_v5`, '0');
         }
     }
 
@@ -140,10 +335,9 @@ class NeuralAgentManager {
             }
 
             const [convOut, d256Out, d128Out, qOut] = ag.probe.predict(input);
-            const convArr = convOut.dataSync(); // 6 * 7 * 128 = 5376 valeurs
+            const convArr = convOut.dataSync();
             const qArr = Array.from(qOut.dataSync());
 
-            // Calcul de la Carte d'Attention 6x7 (intensité moyenne des 128 filtres par case)
             const attentionMap = new Array(42).fill(0);
             for (let cellIdx = 0; cellIdx < 42; cellIdx++) {
                 let sum = 0;
@@ -236,7 +430,6 @@ class NeuralAgentManager {
                     let bestFutureAction = 0;
                     let bestVal = -Infinity;
                     for (let c = 0; c < 7; c++) {
-                        // Vérifie que la colonne c du haut (index c*2 et c*2+1) est vide dans nextState
                         const colFull = m.nextState[c * 2] !== 0 || m.nextState[c * 2 + 1] !== 0;
                         if (!colFull && nextQMainValues[i][c] > bestVal) {
                             bestVal = nextQMainValues[i][c];
@@ -261,6 +454,12 @@ class NeuralAgentManager {
         const ag = this.agents[aiKey];
         ag.target.setWeights(ag.model.getWeights());
         await ag.model.save(ag.storage);
-        localStorage.setItem(ag.ageKey, ag.games.toString());
+        localStorage.setItem(ag.metaKey, JSON.stringify({
+            name: ag.name,
+            games: ag.games,
+            blocks: ag.blocks,
+            wins: ag.wins
+        }));
+        localStorage.setItem(`dqn_age_${aiKey.toLowerCase()}_v5`, ag.games.toString());
     }
 }
